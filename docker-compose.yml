@@ -1,0 +1,60 @@
+services:
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-edocas_db}
+      POSTGRES_USER: ${POSTGRES_USER:-edocas_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-edocas_user} -d ${POSTGRES_DB:-edocas_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  ratelimit:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", 'redis-cli -a "$${REDIS_PASSWORD}" ping | grep PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      FLASK_CONFIG: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-edocas_user}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-edocas_db}
+      DATABASE_REQUIRE_TLS: "false"
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env}
+      CORS_ORIGINS: ${CORS_ORIGINS:?Set CORS_ORIGINS to exact HTTPS frontend origin(s)}
+      RATELIMIT_STORAGE_URI: redis://:${REDIS_PASSWORD}@ratelimit:6379/0
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
+      CLOUDINARY_FOLDER: ${CLOUDINARY_FOLDER:-edscoai}
+      MAX_REQUEST_BYTES: ${MAX_REQUEST_BYTES:-12582912}
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-10485760}
+    depends_on:
+      db:
+        condition: service_healthy
+      ratelimit:
+        condition: service_healthy
+  frontend:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-3000}:80"
+    depends_on:
+      - backend
+volumes:
+  postgres_data:
+  redis_data:

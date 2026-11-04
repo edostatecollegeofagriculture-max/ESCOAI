@@ -1,0 +1,35 @@
+node_modules/
+dist/
+.vercel/
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+*.py[cod]
+backend/*.db
+backend/instance/
+.pytest_cache/
+.coverage
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+
+# Local databases and uploaded files
+instance/
+*.sqlite
+*.sqlite3
