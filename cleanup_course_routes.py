@@ -1,20 +1,27 @@
 ﻿from pathlib import Path
+import re
 
-portal_path = Path("backend/app/routes/portal.py")
+portal_path = Path("app/routes/portal.py")
 content = portal_path.read_text(encoding="utf-8")
 
-# Check if the route already exists
-if "def create_course():" in content:
-    print("[SKIP] create_course already exists in portal.py")
-    exit()
+print(f"Original file length: {len(content)} chars")
 
-# Find the GET route anchor
-anchor = "@portal_bp.get('/academics/courses')"
-if anchor not in content:
-    print("[FAIL] Could not find the GET courses anchor.")
-    exit()
+# Remove every create_course and delete_course block, regardless of decorator name
+patterns = [
+    r"@portal_bp\.route\('/academics/courses', methods=\['POST'\]\).*?(?=\n@portal_bp\.route|\n@app\.route|\ndef |\Z)",
+    r"@bp\.route\('/academics/courses', methods=\['POST'\]\).*?(?=\n@portal_bp\.route|\n@app\.route|\ndef |\Z)",
+    r"@portal_bp\.route\('/academics/courses/<id>', methods=\['DELETE'\]\).*?(?=\n@portal_bp\.route|\n@app\.route|\ndef |\Z)",
+    r"@bp\.route\('/academics/courses/<id>', methods=\['DELETE'\]\).*?(?=\n@portal_bp\.route|\n@app\.route|\ndef |\Z)",
+]
 
-new_routes = """
+for pattern in patterns:
+    content = re.sub(pattern, "", content, flags=re.DOTALL)
+
+print(f"After cleanup: {len(content)} chars")
+print(f"Contains 'def create_course': {'def create_course' in content}")
+print(f"Contains 'def delete_course': {'def delete_course' in content}")
+
+correct_routes = """
 
 @portal_bp.route('/academics/courses', methods=['POST'])
 @jwt_required()
@@ -56,6 +63,7 @@ def create_course():
     save_record('courses', course_id, payload)
     return jsonify(success=True, course=payload)
 
+
 @portal_bp.route('/academics/courses/<id>', methods=['DELETE'])
 @jwt_required()
 def delete_course(id):
@@ -66,6 +74,6 @@ def delete_course(id):
         return jsonify(success=False, message=str(e)), 500
 """
 
-content = content.replace(anchor, new_routes + "\n" + anchor)
+content += correct_routes
 portal_path.write_text(content, encoding="utf-8")
-print("[PASS] Safely injected POST and DELETE course routes before the GET route.")
+print("[PASS] Cleaned up and re-added course routes.")

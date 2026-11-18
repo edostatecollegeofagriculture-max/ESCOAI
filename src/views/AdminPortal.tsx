@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
+import { ImageCropper } from '../components/ImageCropper';
 import {
   AuditLog,
   Course,
@@ -48,6 +49,8 @@ export const AdminPortal: React.FC<Props> = ({ onOpenPrintModal }) => {
   const [activeSubTab, setActiveSubTab] = useState<
     'analytics' | 'settings' | 'users' | 'academics' | 'results' | 'finance' | 'audit' | 'cms' | 'people'
   >('analytics');
+  const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
+  const [cropFieldTarget, setCropFieldTarget] = useState<string | null>(null);
 
   const [stats, setStats] = useState<any>(null);
   const [usersList, setUsersList] = useState<User[]>([]);
@@ -1570,6 +1573,23 @@ const [peopleDeleting, setPeopleDeleting] = useState(false);
       )}
       {/* SUBTAB 8: Content Management System (CMS) */}
       {activeSubTab === 'cms' && <ContentManagementModule />}
-    </div>
+    
+      {cropImageSrc && (
+        <ImageCropper
+          imageSrc={cropImageSrc}
+          onCropComplete={(croppedImage) => {
+            if (cropFieldTarget === 'profileImageUrl') {
+              setSelectedStudent({ ...selectedStudent, profileImageUrl: croppedImage });
+            }
+            setCropImageSrc(null);
+            setCropFieldTarget(null);
+          }}
+          onCancel={() => {
+            setCropImageSrc(null);
+            setCropFieldTarget(null);
+          }}
+        />
+      )}
+</div>
   );
 };

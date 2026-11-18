@@ -48,7 +48,7 @@ export const StudentPortal: React.FC<Props> = ({ onOpenPrintModal }) => {
           return;
         }
 
-        const crsRes = await api.getCourses({ departmentId: stdRes.student?.departmentId });
+        const crsRes = await api.getCourses({ departmentId: stdRes.student?.departmentId, level: stdRes.student?.level, semester: settings?.currentSemester || 'First' });
         if (crsRes.success) {
           setEligibleCourses(crsRes.courses);
         }
@@ -130,7 +130,29 @@ export const StudentPortal: React.FC<Props> = ({ onOpenPrintModal }) => {
 
   const totalSelectedCredits = eligibleCourses
     .filter((c) => selectedCourseIds.includes(c.id))
-    .reduce((sum, c) => sum + c.creditUnits, 0);
+    .reduce((sum, c) => sum + Number(c.units || c.creditUnits || 0), 0);
+
+  const calculateGPA = () => {
+    if (!results || results.length === 0) return { gpa: 'N/A', credits: 0 };
+    const approvedResults = results.filter((r: any) => r.status === 'APPROVED' || r.status === 'PUBLISHED');
+    if (approvedResults.length === 0) return { gpa: 'N/A', credits: 0 };
+
+    let totalPoints = 0;
+    let totalCredits = 0;
+
+    approvedResults.forEach((r: any) => {
+      const gradePoints: Record<string, number> = { 'A': 5, 'B': 4, 'C': 3, 'D': 2, 'E': 1, 'F': 0 };
+      const point = gradePoints[r.grade] || 0;
+      const credits = r.creditUnits || 3;
+      totalPoints += (point * credits);
+      totalCredits += credits;
+    });
+
+    if (totalCredits === 0) return { gpa: 'N/A', credits: 0 };
+    return { gpa: (totalPoints / totalCredits).toFixed(2), credits: totalCredits };
+  };
+
+  const gpaData = calculateGPA();
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
@@ -164,7 +186,7 @@ export const StudentPortal: React.FC<Props> = ({ onOpenPrintModal }) => {
               Matriculation No: <strong>{student?.matricNumber || 'EDOCASTI/ND/2024/0101'}</strong>
             </p>
             <p className="text-xs text-emerald-300/80 mt-0.5">
-              {student?.programmeName || 'National Diploma in Agricultural Technology'} â€¢ {student?.departmentName}
+              {student?.programmeName || 'National Diploma in Agricultural Technology'} • {student?.departmentName}
             </p>
           </div>
         </div>
@@ -172,7 +194,7 @@ export const StudentPortal: React.FC<Props> = ({ onOpenPrintModal }) => {
         <div className="flex items-center gap-4 bg-white/10 px-5 py-3 rounded-2xl backdrop-blur-xs border border-white/10">
           <div className="text-right">
             <span className="text-xs text-emerald-200 block uppercase font-semibold">Cumulative GPA</span>
-            <span className="text-2xl font-black text-amber-400">{student?.cgpa || '3.75'}</span>
+            <span className="text-2xl font-black text-amber-400">{student?.cgpa || gpaData.gpa}</span>
             <span className="text-[10px] text-emerald-300 block">Scale: 5.00</span>
           </div>
           <div className="h-10 w-[1px] bg-white/20"></div>
@@ -216,7 +238,7 @@ export const StudentPortal: React.FC<Props> = ({ onOpenPrintModal }) => {
       {statusMessage && (
         <div className="p-4 bg-emerald-50 border border-emerald-300 rounded-xl text-xs text-emerald-900 flex items-center justify-between">
           <span>{statusMessage}</span>
-          <button onClick={() => setStatusMessage(null)} className="font-bold text-emerald-700">âœ•</button>
+          <button onClick={() => setStatusMessage(null)} className="font-bold text-emerald-700">✓</button>
         </div>
       )}
 
@@ -337,7 +359,7 @@ export const StudentPortal: React.FC<Props> = ({ onOpenPrintModal }) => {
                       <td className="p-3 text-center font-bold">{crs.creditUnits}</td>
                       <td className="p-3 text-slate-600">{crs.lecturerName || 'Faculty Assigned'}</td>
                       <td className="p-3 text-slate-500">
-                        {crs.level} â€¢ {crs.semester}
+                        {crs.level} • {crs.semester}
                       </td>
                     </tr>
                   );
@@ -412,7 +434,35 @@ export const StudentPortal: React.FC<Props> = ({ onOpenPrintModal }) => {
                 <tbody className="divide-y divide-slate-200">
                   {results.map((r) => {
                     const crs = eligibleCourses.find((c) => c.id === r.courseId);
-                    return (
+                    
+  // Calculate GPA dynamically from approved results
+  const calculateGPA = () => {
+    if (!results || results.length === 0) return { gpa: 'N/A', credits: 0 };
+    
+    // We only calculate GPA from approved results
+    const approvedResults = results.filter((r: any) => r.status === 'APPROVED' || r.status === 'PUBLISHED');
+    if (approvedResults.length === 0) return { gpa: 'N/A', credits: 0 };
+
+    let totalPoints = 0;
+    let totalCredits = 0;
+
+    approvedResults.forEach((r: any) => {
+      // Assume grade is A, B, C, D, E, F and creditUnits is available
+      const gradePoints: Record<string, number> = { 'A': 5, 'B': 4, 'C': 3, 'D': 2, 'E': 1, 'F': 0 };
+      const point = gradePoints[r.grade] || 0;
+      const credits = r.creditUnits || 3; // fallback to 3 if missing
+      
+      totalPoints += (point * credits);
+      totalCredits += credits;
+    });
+
+    if (totalCredits === 0) return { gpa: 'N/A', credits: 0 };
+    return { gpa: (totalPoints / totalCredits).toFixed(2), credits: totalCredits };
+  };
+
+  const gpaData = calculateGPA();
+
+return (
                       <tr key={r.id} className="hover:bg-slate-50">
                         <td className="p-3 font-mono font-bold text-emerald-900">{crs?.code || r.courseId}</td>
                         <td className="p-3 text-slate-800 font-medium">{crs?.title || 'Academic Course'}</td>

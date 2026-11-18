@@ -96,6 +96,7 @@ export const DocumentTemplatesTab: React.FC = () => {
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
       <div className="flex items-center justify-between border-b border-slate-200 pb-4">
         <div>
           <h2 className="text-lg font-bold text-slate-800">Document Templates</h2>
@@ -290,6 +291,127 @@ export const DocumentTemplatesTab: React.FC = () => {
             </div>
           </>
         )}
+        </div> {/* End of Left Column (Forms) */}
+
+        {/* Right Column: Live Preview */}
+        <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 h-[600px] overflow-y-auto hidden xl:block sticky top-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold text-slate-700 text-sm uppercase tracking-wide">Live Preview</h3>
+            <span className="text-xs text-slate-500">Updates instantly as you type</span>
+          </div>
+          
+          {activeDoc === 'admissionLetter' && (
+            <div className="bg-white shadow-md border border-slate-300 p-6 text-sm font-serif text-slate-800 transform scale-90 origin-top">
+              {/* Preview: Admission Letter */}
+              <div className="text-center mb-4 border-b-2 border-emerald-700 pb-4">
+                <div className="text-lg font-bold text-emerald-800 uppercase">{formData.admissionLetter.letterheadSubtext || 'CAMPUS NAME'}</div>
+                <div className="text-xs italic text-slate-500 mt-1">{formData.admissionLetter.letterheadMotto || 'Motto here'}</div>
+              </div>
+              
+              <div className="text-right text-xs mb-4">
+                <div>Date: {new Date().toLocaleDateString()}</div>
+              </div>
+              
+              <h4 className="text-center font-bold text-base uppercase underline mb-6">
+                {formData.admissionLetter.title || 'Admission Letter'} ({settings?.currentSession || '2025/2026'})
+              </h4>
+              
+              <p className="mb-4">{formData.admissionLetter.greeting || 'Dear'} <strong>[Student Name]</strong>,</p>
+              
+              <p className="mb-4 leading-relaxed whitespace-pre-wrap">
+                {(formData.admissionLetter.introParagraph || '')
+                  .replace('{institutionName}', settings?.institutionName || 'Institution Name')
+                  .replace('{currentSession}', settings?.currentSession || '2025/2026')}
+              </p>
+              
+              <div className="grid grid-cols-2 gap-4 bg-emerald-50 p-3 rounded border border-emerald-100 mb-4 text-xs">
+                <div><span className="text-slate-500">Programme:</span> <br/><strong>{formData.admissionLetter.schoolFaculty || 'Programme'}</strong></div>
+                <div><span className="text-slate-500">Duration:</span> <br/><strong>{formData.admissionLetter.programmeDuration || '2 Years'}</strong></div>
+                <div><span className="text-slate-500">Level:</span> <br/><strong>{formData.admissionLetter.studyLevel || 'ND I'}</strong></div>
+              </div>
+              
+              <div className="space-y-1 text-xs bg-amber-50 p-3 rounded border border-amber-100 mb-6">
+                <div className="font-bold text-amber-900 uppercase mb-2">{formData.admissionLetter.conditionsTitle || 'Conditions:'}</div>
+                <ul className="list-disc list-inside space-y-1">
+                  {(formData.admissionLetter.conditionsList || []).map((c: string, i: number) => <li key={i}>{c}</li>)}
+                </ul>
+              </div>
+              
+              <div className="flex justify-between items-end mt-8">
+                <div className="text-center">
+                  {formData.admissionLetter.signatureImageUrl ? (
+                    <img src={formData.admissionLetter.signatureImageUrl} className="h-10 object-contain mx-auto mb-1" />
+                  ) : (
+                    <div className="italic text-lg mb-1">{formData.admissionLetter.signatureName || 'Signature'}</div>
+                  )}
+                  <div className="border-t border-slate-400 pt-1 text-xs font-bold uppercase">{formData.admissionLetter.signatureName || 'Name'}</div>
+                  <div className="text-[10px] text-slate-500">{formData.admissionLetter.signatureTitle || 'Title'}</div>
+                </div>
+                {formData.admissionLetter.sealImageUrl && (
+                  <img src={formData.admissionLetter.sealImageUrl} className="h-16 w-16 object-contain" />
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeDoc === 'idCard' && (
+            <div className="flex flex-col gap-4 items-center">
+              {/* Preview: ID Card Front */}
+              <div 
+                className="w-[340px] h-[210px] rounded-xl text-white p-5 shadow-xl relative overflow-hidden"
+                style={{ 
+                  background: (formData.idCard.frontBg || '').startsWith('#') 
+                    ? `linear-gradient(135deg, ${formData.idCard.frontBg}, #0f172a)` 
+                    : (formData.idCard.frontBg || 'linear-gradient(135deg, #064e3b, #065f46, #0f172a)'),
+                  border: `2px solid ${formData.idCard.accentColor || '#f59e0b'}`
+                }}
+              >
+                {formData.idCard.showWatermark && (
+                  <div className="absolute inset-0 flex items-center justify-center opacity-10 text-5xl font-black uppercase pointer-events-none select-none">
+                    {formData.idCard.watermarkText || 'WATERMARK'}
+                  </div>
+                )}
+                <div className="flex items-center gap-2 mb-3 relative z-10">
+                  <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-xs">Logo</div>
+                  <div>
+                    <div className="text-[10px] font-bold text-white uppercase leading-tight">{formData.idCard.shortName || 'SHORT NAME'}</div>
+                    <div className="text-[8px] text-amber-200/90 leading-tight">{formData.idCard.institutionName || 'Institution Name'}</div>
+                  </div>
+                </div>
+                
+                <div className="flex gap-4 relative z-10 mt-4">
+                  <div className="w-16 h-20 rounded bg-slate-300 border border-white/40 flex items-center justify-center text-slate-500 text-[8px] font-bold uppercase">PHOTO</div>
+                  <div className="space-y-1 text-xs">
+                    <div className="font-bold text-amber-200 text-sm uppercase">STUDENT NAME</div>
+                    <div className="text-emerald-100">EDO/26/000000</div>
+                    <div className="text-[10px]">ND Agricultural Technology</div>
+                    <div className="text-[10px] text-emerald-200">Level: ND I</div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Preview: ID Card Back */}
+              <div 
+                className="w-[340px] h-[210px] rounded-xl text-white p-5 shadow-xl relative overflow-hidden flex flex-col justify-between"
+                style={{ 
+                  background: (formData.idCard.frontBg || '').startsWith('#') 
+                    ? `linear-gradient(135deg, #0f172a, ${formData.idCard.frontBg}, #0f172a)` 
+                    : (formData.idCard.backBg || 'linear-gradient(135deg, #0f172a, #022c22, #0f172a)'),
+                  border: `2px solid ${formData.idCard.accentColor || '#f59e0b'}`
+                }}
+              >
+                <div className="text-[10px] text-emerald-100 relative z-10">
+                  <p>This card remains property of the institution.</p>
+                  <p>If found, please return to the nearest campus office.</p>
+                </div>
+                <div className="flex justify-between items-end relative z-10">
+                  <div className="text-[8px] text-emerald-200">Valid: 2025/2026</div>
+                  <div className="w-12 h-12 bg-white flex items-center justify-center text-[6px] text-black rounded">QR CODE</div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

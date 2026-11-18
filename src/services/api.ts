@@ -264,19 +264,20 @@ class ApiService {
   }
 
   getMyRegistration() {
-    return this.request<{ success: boolean; registration: any }>('/registrations/my-registration');
+    return this.request<{ success: boolean; registration: any }>('/registrations/me');
   }
 
   registerCourses(courseIds: string[]) {
-    return this.request<{ success: boolean; registration: any }>('/registrations/register', {
+    return this.request<{ success: boolean; registration: any }>('/registrations', {
       method: 'POST',
       body: JSON.stringify({ courseIds }),
     });
   }
 
-  approveRegistration(id: string) {
-    return this.request<{ success: boolean; registration: any }>(`/registrations/${id}/approve`, {
-      method: 'PATCH',
+  approveRegistration(id: string, status: 'APPROVED' | 'REJECTED' = 'APPROVED') {
+    return this.request<{ success: boolean; registration: any }>(`/registrations/${id}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status })
     });
   }
 

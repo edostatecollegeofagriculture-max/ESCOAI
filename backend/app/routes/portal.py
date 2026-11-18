@@ -821,9 +821,23 @@ def create_programme():
 @portal_bp.get('/academics/programmes')
 def programmes(): return response_list('programmes',all_records('programmes'))
 @portal_bp.get('/academics/courses')
-def list_courses(): return response_list('courses',filtered('courses'))
+def list_courses():
+    dept_id = request.args.get('departmentId')
+    level = request.args.get('level')
+    semester = request.args.get('semester')
+    courses = all_records('courses')
+    if dept_id:
+        courses = [c for c in courses if c.get('departmentId') == dept_id]
+    if level:
+        courses = [c for c in courses if c.get('level') == level]
+    if semester:
+        courses = [c for c in courses if c.get('semester') == semester]
+    return response_list('courses', courses)
 @portal_bp.post('/academics/courses')
 @role_required('SUPER_ADMIN','INSTITUTION_ADMIN','REGISTRAR','EXAM_OFFICER')
+
+
+
 def create_course():
     d = body()
     code = str(d.get('code') or '').strip()
@@ -3083,3 +3097,170 @@ def cms_calendar_delete(rid):
 
 @portal_bp.errorhandler(404)
 def not_found(_): return jsonify(success=False,message='API endpoint or record not found.'),404
+
+
+@portal_bp.route('/academics/courses/<id>', methods=['PUT'])
+@jwt_required()
+def update_course(id):
+    data = request.get_json() or {}
+    existing = get_record('courses', id)
+    if not existing:
+        return jsonify(success=False, message="Course not found"), 404
+
+    lecturer_id = data.get('lecturerId', existing.get('lecturerId'))
+    lecturer_name = existing.get('lecturerName')
+    if lecturer_id and lecturer_id != existing.get('lecturerId'):
+        lec = get_record('leadership', lecturer_id)
+        if lec:
+            lecturer_name = lec.get('fullName')
+    elif not lecturer_id:
+        lecturer_name = None
+
+    updated = {
+        **existing,
+        'code': data.get('code', existing.get('code')),
+        'title': data.get('title', existing.get('title')),
+        'units': data.get('units', existing.get('units')),
+        'departmentId': data.get('departmentId', existing.get('departmentId')),
+        'level': data.get('level', existing.get('level')),
+        'semester': data.get('semester', existing.get('semester')),
+        'lecturerId': lecturer_id,
+        'lecturerName': lecturer_name,
+        'updatedAt': now()
+    }
+    put_record('courses', updated, record_key=id)
+    return jsonify(success=True, course=updated)
+
+
+
+
+def submit_course_registration():
+    data = request.get_json() or {}
+    course_ids = data.get('courseIds', [])
+    
+    if not course_ids:
+        return jsonify(success=False, message="No courses selected"), 400
+    
+    current = current_user()
+    if not current:
+        return jsonify(success=False, message="User not authenticated"), 401
+    
+    student = None
+    for s in all_records('students'):
+        if s.get('userId') == current.get('id') or s.get('id') == current.get('id'):
+            student = s
+            break
+    
+    if not student:
+        return jsonify(success=False, message="Student record not found"), 404
+    
+    import uuid
+    reg_id = str(uuid.uuid4())
+    
+    courses = all_records('courses')
+    total_units = 0
+    for cid in course_ids:
+        course = next((c for c in courses if c.get('id') == cid), None)
+        if course:
+            total_units += int(course.get('units') or 0)
+    
+    registration = {
+        'id': reg_id,
+        'studentId': student.get('id'),
+        'matricNumber': student.get('matricNumber'),
+        'studentName': student.get('fullName'),
+        'courseIds': course_ids,
+        'totalUnits': total_units,
+        'session': '2025/2026',
+        'semester': 'First Semester',
+        'status': 'PENDING',
+        'submittedAt': now()
+    }
+    
+    put_record('registrations', registration, record_key=reg_id)
+    return jsonify(success=True, registration=registration)
+
+
+
+def all_registrations():
+    return jsonify(success=True, registrations=all_records('registrations'))
+
+
+
+def update_registration_status(id):
+    data = request.get_json() or {}
+    new_status = data.get('status')
+    if new_status not in ['APPROVED', 'REJECTED', 'PENDING']:
+        return jsonify(success=False, message="Invalid status"), 400
+    
+    reg = get_record('registrations', id)
+    if not reg:
+        return jsonify(success=False, message="Registration not found"), 404
+    
+    reg['status'] = new_status
+    reg['reviewedAt'] = now()
+    put_record('registrations', reg, record_key=id)
+    return jsonify(success=True, registration=reg)
+
+
+@portal_bp.route('/registrations', methods=['POST'])
+@jwt_required()
+def submit_course_registration():
+    data = request.get_json() or {}
+    course_ids = data.get('courseIds', [])
+    if not course_ids:
+        return jsonify(success=False, message="No courses selected"), 400
+    current = current_user()
+    if not current:
+        return jsonify(success=False, message="Not authenticated"), 401
+    student = None
+    for s in all_records('students'):
+        if s.get('userId') == current.get('id') or s.get('id') == current.get('id'):
+            student = s
+            break
+    if not student:
+        return jsonify(success=False, message="Student record not found"), 404
+    import uuid
+    reg_id = str(uuid.uuid4())
+    courses = all_records('courses')
+    total_units = 0
+    for cid in course_ids:
+        course = next((c for c in courses if c.get('id') == cid), None)
+        if course:
+            total_units += int(course.get('units') or 0)
+    registration = {
+        'id': reg_id,
+        'studentId': student.get('id'),
+        'matricNumber': student.get('matricNumber'),
+        'studentName': student.get('fullName'),
+        'courseIds': course_ids,
+        'totalUnits': total_units,
+        'session': '2025/2026',
+        'semester': 'First Semester',
+        'status': 'PENDING',
+        'submittedAt': now()
+    }
+    put_record('registrations', registration, record_key=reg_id)
+    return jsonify(success=True, registration=registration)
+
+
+@portal_bp.route('/registrations', methods=['GET'])
+@jwt_required()
+def all_registrations():
+    return jsonify(success=True, registrations=all_records('registrations'))
+
+
+@portal_bp.route('/registrations/<id>/status', methods=['PUT'])
+@jwt_required()
+def update_registration_status(id):
+    data = request.get_json() or {}
+    new_status = data.get('status')
+    if new_status not in ['APPROVED', 'REJECTED', 'PENDING']:
+        return jsonify(success=False, message="Invalid status"), 400
+    reg = get_record('registrations', id)
+    if not reg:
+        return jsonify(success=False, message="Registration not found"), 404
+    reg['status'] = new_status
+    reg['reviewedAt'] = now()
+    put_record('registrations', reg, record_key=id)
+    return jsonify(success=True, registration=reg)

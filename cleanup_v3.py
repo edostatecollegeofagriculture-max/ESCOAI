@@ -1,6 +1,7 @@
 ﻿from pathlib import Path
+import re
 
-# Try both possible locations
+# Smart path detection: works from root OR backend folder
 candidates = [
     Path("backend/app/routes/portal.py"),  # from root
     Path("app/routes/portal.py"),           # from backend
@@ -13,23 +14,42 @@ for c in candidates:
         break
 
 if not portal_path:
-    print(f"[FAIL] Could not find portal.py. Current dir: {Path.cwd()}")
+    print("[FAIL] Could not find portal.py in either location.")
+    print(f"Current dir: {Path.cwd()}")
     exit(1)
 
 print(f"[OK] Found portal.py at: {portal_path}")
 
 content = portal_path.read_text(encoding="utf-8")
+original_len = len(content)
+print(f"Original file: {original_len} chars")
 
-if "def create_course():" in content:
-    print("[SKIP] create_course already exists in portal.py")
-    exit()
+# Remove ALL create_course and delete_course blocks
+block_pattern = re.compile(
+    r"(@\w+\.route\('/academics/courses(?:/<id>)?',\s*methods=\['(?:POST|DELETE)'\]\)\s*\n"
+    r"@jwt_required\(\)\s*\n"
+    r"def (?:create_course|delete_course)\(.*?\n"
+    r"(?:.*\n)*?"
+    r"(?=\n@\w+\.route|\ndef |\Z))",
+    re.MULTILINE
+)
 
-anchor = "@portal_bp.get('/academics/courses')"
-if anchor not in content:
-    print("[FAIL] Could not find the GET courses anchor.")
-    exit()
+removed_count = 0
+while True:
+    match = block_pattern.search(content)
+    if not match:
+        break
+    content = content[:match.start()] + content[match.end():]
+    removed_count += 1
 
-new_routes = """
+print(f"Removed {removed_count} duplicate course route block(s).")
+
+remaining_create = content.count("def create_course")
+remaining_delete = content.count("def delete_course")
+print(f"Remaining 'create_course' definitions: {remaining_create}")
+print(f"Remaining 'delete_course' definitions: {remaining_delete}")
+
+clean_routes = '''
 
 @portal_bp.route('/academics/courses', methods=['POST'])
 @jwt_required()
@@ -71,6 +91,7 @@ def create_course():
     save_record('courses', course_id, payload)
     return jsonify(success=True, course=payload)
 
+
 @portal_bp.route('/academics/courses/<id>', methods=['DELETE'])
 @jwt_required()
 def delete_course(id):
@@ -79,8 +100,8 @@ def delete_course(id):
         return jsonify(success=True, message="Course deleted")
     except Exception as e:
         return jsonify(success=False, message=str(e)), 500
-"""
+'''
 
-content = content.replace(anchor, new_routes + "\n" + anchor)
+content += clean_routes
 portal_path.write_text(content, encoding="utf-8")
-print("[PASS] Safely injected POST and DELETE course routes.")
+print(f"[PASS] Rewrote portal.py ({len(content)} chars). Clean routes appended.")
