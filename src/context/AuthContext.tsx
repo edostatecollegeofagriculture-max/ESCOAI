@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+﻿import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, InstitutionSettings } from '../types';
 import { api } from '../services/api';
 
@@ -7,8 +7,9 @@ interface AuthContextType {
   settings: InstitutionSettings | null;
   isLoading: boolean;
   login: (email: string, pass: string) => Promise<void>;
+  devQuickLogin: (role: 'SUPER_ADMIN' | 'ADMIN' | 'USER' | 'INSTITUTION_ADMIN' | 'RECTOR' | 'REGISTRAR' | 'ADMISSIONS_OFFICER' | 'DEAN' | 'HOD' | 'LECTURER' | 'EXAM_OFFICER' | 'BURSAR' | 'CONTENT_EDITOR' | 'ICT_ADMIN' | 'SUPPORT_OFFICER' | 'STUDENT' | 'APPLICANT') => Promise<void>;
   registerApplicant: (data: { email: string; password: string; fullName: string; phone?: string }) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   refreshUserData: () => Promise<void>;
   refreshSettings: () => Promise<void>;
 }
@@ -67,6 +68,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const devQuickLogin = async (role: 'SUPER_ADMIN' | 'ADMIN' | 'USER' | 'INSTITUTION_ADMIN' | 'RECTOR' | 'REGISTRAR' | 'ADMISSIONS_OFFICER' | 'DEAN' | 'HOD' | 'LECTURER' | 'EXAM_OFFICER' | 'BURSAR' | 'CONTENT_EDITOR' | 'ICT_ADMIN' | 'SUPPORT_OFFICER' | 'STUDENT' | 'APPLICANT') => {
+    const res = await api.devQuickLogin(role);
+    if (res.success && res.token) {
+      api.setToken(res.token);
+      setUser(res.user);
+    }
+  };
+
   const registerApplicant = async (data: { email: string; password: string; fullName: string; phone?: string }) => {
     const res = await api.registerApplicant(data);
     if (res.success && res.token) {
@@ -75,9 +84,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const logout = () => {
-    api.setToken(null);
-    setUser(null);
+  const logout = async (): Promise<void> => {
+    try {
+      if (api.getToken()) {
+        await api.logout();
+      }
+    } catch (error) {
+      // Local logout must still complete if the server is unavailable.
+      console.warn('Server logout could not be confirmed.', error);
+    } finally {
+      api.setToken(null);
+      setUser(null);
+    }
   };
 
   return (
@@ -87,6 +105,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         settings,
         isLoading,
         login,
+        devQuickLogin,
         registerApplicant,
         logout,
         refreshUserData,
@@ -103,3 +122,4 @@ export const useAuth = () => {
   if (!context) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 };
+

@@ -1,4 +1,7 @@
+﻿from dotenv import load_dotenv
+load_dotenv()
 import os, json, click
+from datetime import datetime, timezone
 from app import create_app
 from app.extensions import db
 from app.models.portal_record import PortalRecord
@@ -47,7 +50,7 @@ def import_legacy_json(file_path, replace):
 def create_admin(email, password, name):
     from werkzeug.security import generate_password_hash
     if len(password) < 12 or len(password) > 128:
-        raise click.ClickException('Administrator password must be 12–128 characters.')
+        raise click.ClickException('Administrator password must be 12â€“128 characters.')
     if '@' not in email or len(email) > 254:
         raise click.ClickException('Enter a valid administrator email address.')
     with app.app_context():
@@ -56,7 +59,7 @@ def create_admin(email, password, name):
         if any((r.payload.get('email','').lower()==email) for r in existing):
             click.echo('Error: User with this email already exists.'); return
         uid=__import__('uuid').uuid4().hex
-        payload={'id':uid,'email':email,'fullName':name.strip(),'passwordHash':generate_password_hash(password),'role':'SUPER_ADMIN','isActive':True,'isLocked':False,'failedLoginAttempts':0,'createdAt':__import__('datetime').datetime.utcnow().isoformat()}
+        payload={'id':uid,'email':email,'fullName':name.strip(),'passwordHash':generate_password_hash(password),'role':'SUPER_ADMIN','isActive':True,'isLocked':False,'failedLoginAttempts':0,'createdAt':datetime.now(timezone.utc).isoformat()}
         db.session.add(PortalRecord(collection='users',record_key=uid,payload=payload));db.session.commit()
     click.echo(f"Super Administrator created: {email}")
 

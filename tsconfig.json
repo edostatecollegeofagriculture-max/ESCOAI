@@ -23,5 +23,17 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "exclude": [
+    "node_modules",
+    "dist",
+    "build",
+    ".venv",
+    "backups",
+    "EDSCOAI",
+    "src/**/backups",
+    "**/*.bak_*",
+    "**/*.backup_*",
+    "**/*.bak-*"
+  ]
 }

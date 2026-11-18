@@ -1,4 +1,4 @@
-import unittest
+﻿import unittest
 from werkzeug.security import generate_password_hash
 from app import create_app
 from app.extensions import db
@@ -11,6 +11,28 @@ class TestEdocasBackend(unittest.TestCase):
         self.ctx = self.app.app_context(); self.ctx.push(); db.create_all()
         user = {'id':'test-admin','email':'admin@edocas.edu.ng','fullName':'Dr. Test Admin','passwordHash':generate_password_hash('Password123!'),'role':'SUPER_ADMIN','isActive':True,'isLocked':False,'failedLoginAttempts':0}
         db.session.add(PortalRecord(collection='users',record_key=user['id'],payload=user))
+
+        school = {
+            'id': 'school-1',
+            'name': 'Test School of Applied Sciences'
+        }
+        department = {
+            'id': 'dept-1',
+            'name': 'Test Computer Science Department',
+            'schoolId': 'school-1'
+        }
+
+        db.session.add(PortalRecord(
+            collection='schools',
+            record_key=school['id'],
+            payload=school
+        ))
+        db.session.add(PortalRecord(
+            collection='departments',
+            record_key=department['id'],
+            payload=department
+        ))
+
         db.session.commit()
     def tearDown(self):
         db.session.remove(); db.drop_all(); self.ctx.pop()
@@ -32,3 +54,4 @@ class TestEdocasBackend(unittest.TestCase):
         response=self.client.post('/api/v1/academics/courses',headers={'Authorization':'Bearer '+login['token']},json={'code':'CSC101','title':'Computing','departmentId':'dept-1','creditUnits':3,'level':'ND I','semester':'First Semester'})
         self.assertEqual(response.status_code,201); self.assertEqual(response.get_json()['course']['code'],'CSC101')
 if __name__=='__main__': unittest.main()
+

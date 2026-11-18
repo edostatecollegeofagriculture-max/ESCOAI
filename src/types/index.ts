@@ -1,5 +1,10 @@
-export type UserRole =
+﻿export type UserRole =
   | 'SUPER_ADMIN'
+  | 'ADMIN'
+  | 'USER';
+
+export type UserCategory =
+  | 'SYSTEM'
   | 'INSTITUTION_ADMIN'
   | 'RECTOR'
   | 'REGISTRAR'
@@ -9,6 +14,9 @@ export type UserRole =
   | 'LECTURER'
   | 'EXAM_OFFICER'
   | 'BURSAR'
+  | 'CONTENT_EDITOR'
+  | 'ICT_ADMIN'
+  | 'SUPPORT_OFFICER'
   | 'STUDENT'
   | 'APPLICANT';
 
@@ -17,11 +25,13 @@ export interface User {
   email: string;
   fullName: string;
   role: UserRole;
+  category?: UserCategory;
   phone?: string;
   isActive?: boolean;
   isLocked?: boolean;
   departmentId?: string;
   schoolId?: string;
+  profileImageUrl?: string;
   createdAt?: string;
   lastLogin?: string;
 }
@@ -91,6 +101,7 @@ export interface AdmissionApplication {
   session: string;
   firstName: string;
   lastName: string;
+  fullName?: string;
   otherNames?: string;
   gender: string;
   dob: string;
@@ -99,6 +110,7 @@ export interface AdmissionApplication {
   stateOfOrigin: string;
   lga: string;
   residentialAddress: string;
+  profileImageUrl?: string;
   oLevelResults: Array<{ subject: string; grade: string; examNumber: string; examType: string }>;
   status: 'DRAFT' | 'SUBMITTED' | 'UNDER_REVIEW' | 'OFFERED' | 'ACCEPTED' | 'REJECTED';
   screeningNotes?: string;
@@ -114,6 +126,7 @@ export interface Student {
   fullName?: string;
   email?: string;
   phone?: string;
+  profileImageUrl?: string;
   programmeId: string;
   programmeName?: string;
   departmentId: string;
@@ -264,4 +277,3 @@ export interface HeroSlide {
   order: number;
   isActive: boolean;
 }
-

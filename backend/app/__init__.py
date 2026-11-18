@@ -1,4 +1,4 @@
-import os
+﻿import os
 from flask import Flask, jsonify, request
 from sqlalchemy import text
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -14,6 +14,7 @@ def create_app(config_name=None):
 
     app = Flask(__name__)
     app.config.from_object(config_class)
+    app.config["APP_ENVIRONMENT"] = config_name
 
     if not app.config.get("SQLALCHEMY_DATABASE_URI"):
         raise RuntimeError("DATABASE_URL must be configured for the selected environment.")
@@ -26,8 +27,9 @@ def create_app(config_name=None):
             raise RuntimeError("Production SECRET_KEY and JWT_SECRET_KEY must be different values.")
         if any(str(app.config[key]).lower().startswith(("replace-", "change-me", "your-")) for key in ("SECRET_KEY", "JWT_SECRET_KEY")):
             raise RuntimeError("Replace placeholder secrets with unique randomly generated production secrets.")
-        if not app.config["SQLALCHEMY_DATABASE_URI"].startswith("postgresql+"):
-            raise RuntimeError("Production must use PostgreSQL via DATABASE_URL.")
+        database_uri = app.config["SQLALCHEMY_DATABASE_URI"]
+        if not database_uri.startswith("mysql+pymysql://"):
+            raise RuntimeError("Production must use MySQL via mysql+pymysql:// DATABASE_URL.")
         limiter_store = os.environ.get("RATELIMIT_STORAGE_URI", "").strip()
         if not limiter_store or limiter_store.startswith("memory://"):
             raise RuntimeError("Production requires a shared Redis-compatible RATELIMIT_STORAGE_URI; memory rate limiting is not production-safe.")
@@ -53,7 +55,15 @@ def create_app(config_name=None):
     def reject_inactive_or_missing_users(_jwt_header, jwt_payload):
         """Re-check account status on every authenticated request so deactivation takes effect immediately."""
         identity = str(jwt_payload.get("sub", ""))
+        jti = jwt_payload.get("jti")
         try:
+            # Reject tokens that have been explicitly revoked during logout.
+            if jti and PortalRecord.query.filter_by(
+                collection="jwtBlocklist",
+                record_key=str(jti)
+            ).first():
+                return True
+
             row = PortalRecord.query.filter_by(collection="users", record_key=identity).first()
             if row is None:
                 return True
@@ -125,3 +135,5 @@ def create_app(config_name=None):
         return jsonify(success=False, message="An internal server error occurred."), 500
 
     return app
+
+

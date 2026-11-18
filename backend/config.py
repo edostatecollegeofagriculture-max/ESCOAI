@@ -5,12 +5,18 @@ from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
 BASEDIR = os.path.abspath(os.path.dirname(__file__))
 
 
-def _postgres_uri(raw: str, require_tls: bool) -> str:
+def _db_uri(raw: str, require_tls: bool) -> str:
     raw = (raw or "").strip()
+    # Handle PostgreSQL
     if raw.startswith("postgres://"):
         raw = "postgresql://" + raw[len("postgres://"):]
     if raw.startswith("postgresql://") and "+psycopg2" not in raw and "+psycopg" not in raw:
         raw = raw.replace("postgresql://", "postgresql+psycopg2://", 1)
+    # Handle MySQL / MariaDB
+    if raw.startswith("mysql://"):
+        raw = raw.replace("mysql://", "mysql+pymysql://", 1)
+    if raw.startswith("mariadb://"):
+        raw = raw.replace("mariadb://", "mysql+pymysql://", 1)
     if require_tls and raw.startswith("postgresql"):
         parts = urlsplit(raw)
         query = dict(parse_qsl(parts.query, keep_blank_values=True))
@@ -20,6 +26,8 @@ def _postgres_uri(raw: str, require_tls: bool) -> str:
 
 
 class Config:
+    ENABLE_DEV_QUICK_LOGIN = False
+    APP_ENVIRONMENT = os.environ.get("APP_ENVIRONMENT", "production")
     SECRET_KEY = os.environ.get("SECRET_KEY")
     JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY")
     JWT_ALGORITHM = "HS256"
@@ -39,16 +47,26 @@ class Config:
 
 
 class DevelopmentConfig(Config):
+    APP_ENVIRONMENT = "development"
+    ENABLE_DEV_QUICK_LOGIN = (
+        os.environ.get("ENABLE_DEV_QUICK_LOGIN", "false").strip().lower() == "true"
+    )
     DEBUG = False
     SECRET_KEY = os.environ.get("SECRET_KEY", "local-development-only-change-me")
     JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "local-development-jwt-only-change-me")
-    SQLALCHEMY_DATABASE_URI = os.environ.get("DEV_DATABASE_URL", f"sqlite:///{os.path.join(BASEDIR, 'edocas_dev.db')}")
+    SQLALCHEMY_DATABASE_URI = _db_uri(
+        os.environ.get(
+            "DEV_DATABASE_URL",
+            f"sqlite:///{os.path.join(BASEDIR, 'edocas_dev.db')}"
+        ),
+        require_tls=False
+    )
 
 
 class TestingConfig(Config):
     TESTING = True
     SECRET_KEY = "testing-only-secret"
-    JWT_SECRET_KEY = "testing-only-jwt-secret"
+    JWT_SECRET_KEY = "testing-only-jwt-secret-32-bytes-minimum"
     SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=5)
     RATELIMIT_ENABLED = False
@@ -58,7 +76,7 @@ class ProductionConfig(Config):
     DEBUG = False
     SECRET_KEY = os.environ.get("SECRET_KEY")
     JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY")
-    SQLALCHEMY_DATABASE_URI = _postgres_uri(os.environ.get("DATABASE_URL", ""), require_tls=os.environ.get("DATABASE_REQUIRE_TLS", "true").lower() != "false")
+    SQLALCHEMY_DATABASE_URI = _db_uri(os.environ.get("DATABASE_URL", ""), require_tls=os.environ.get("DATABASE_REQUIRE_TLS", "false").lower() != "false")
     SQLALCHEMY_ENGINE_OPTIONS = {"pool_pre_ping": True, "pool_recycle": 300, "pool_size": 5, "max_overflow": 5}
     PREFERRED_URL_SCHEME = "https"
     RATELIMIT_ENABLED = True

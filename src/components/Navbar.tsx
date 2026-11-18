@@ -1,8 +1,9 @@
-import React from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { GlobalSearchBar } from './GlobalSearchBar';
 import { ThemeToggle } from './ThemeToggle';
 import { SchoolLogo } from './SchoolLogo';
+import { api } from '../services/api';
 import {
   GraduationCap,
   Users,
@@ -28,6 +29,60 @@ export const Navbar: React.FC<Props> = ({
   onOpenPrintModal,
 }) => {
   const { user, settings, logout } = useAuth();
+  const [avatarUrl, setAvatarUrl] = useState<string>('');
+
+  const displayName = user?.fullName?.trim() || user?.email || 'Authenticated User';
+
+  // Fetch student record for photo when user is a student/applicant
+  useEffect(() => {
+    let cancelled = false;
+    if (!user) {
+      setAvatarUrl('');
+      return;
+    }
+
+    // Direct hits first
+    const direct = (user as any).profileImageUrl || (user as any).photo;
+    if (direct) {
+      setAvatarUrl(direct);
+      return;
+    }
+
+    // Fall back to the student record
+    if (user.category === 'STUDENT' || user.category === 'APPLICANT') {
+      api.getMyStudentProfile()
+        .then((res: any) => {
+          if (cancelled) return;
+          const photo =
+            res?.student?.profileImageUrl ||
+            res?.student?.photo ||
+            res?.student?.photoUrl ||
+            '';
+          if (photo) setAvatarUrl(photo);
+        })
+        .catch(() => {
+          // silent — keep initials fallback
+        });
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  const canViewStudentPortal = Boolean(
+    user && (user.role === 'SUPER_ADMIN' || user.category === 'STUDENT')
+  );
+
+  const canViewFacultyPortal = Boolean(
+    user &&
+      (user.role === 'SUPER_ADMIN' ||
+        ['LECTURER', 'HOD', 'DEAN'].includes(user.category || ''))
+  );
+
+  const canViewManagementPortal = Boolean(
+    user && (user.role === 'SUPER_ADMIN' || user.role === 'ADMIN')
+  );
 
   return (
     <header className="sticky top-0 z-40 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shadow-xs transition-colors duration-200">
@@ -109,7 +164,7 @@ export const Navbar: React.FC<Props> = ({
             Admissions
           </button>
 
-          {user && (user.role === 'STUDENT' || user.role === 'SUPER_ADMIN') && (
+          {canViewStudentPortal && (
             <button
               onClick={() => setActiveTab('student')}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
@@ -122,56 +177,60 @@ export const Navbar: React.FC<Props> = ({
             </button>
           )}
 
-          {user &&
-            ['LECTURER', 'HOD', 'DEAN', 'SUPER_ADMIN'].includes(user.role) && (
-              <button
-                onClick={() => setActiveTab('lecturer')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                  activeTab === 'lecturer'
-                    ? 'bg-white dark:bg-slate-900 text-emerald-900 dark:text-emerald-400 shadow-xs'
-                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                Faculty
-              </button>
-            )}
+          {canViewFacultyPortal && (
+            <button
+              onClick={() => setActiveTab('lecturer')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                activeTab === 'lecturer'
+                  ? 'bg-white dark:bg-slate-900 text-emerald-900 dark:text-emerald-400 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              Faculty
+            </button>
+          )}
 
-          {user &&
-            ['SUPER_ADMIN', 'INSTITUTION_ADMIN', 'RECTOR', 'REGISTRAR', 'BURSAR', 'EXAM_OFFICER'].includes(
-              user.role
-            ) && (
-              <button
-                onClick={() => setActiveTab('admin')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                  activeTab === 'admin'
-                    ? 'bg-white dark:bg-slate-900 text-emerald-900 dark:text-emerald-400 shadow-xs'
-                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                Management
-              </button>
-            )}
+          {canViewManagementPortal && (
+            <button
+              onClick={() => setActiveTab('admin')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                activeTab === 'admin'
+                  ? 'bg-white dark:bg-slate-900 text-emerald-900 dark:text-emerald-400 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              Management
+            </button>
+          )}
         </nav>
 
-        {/* Right Tools: Theme Toggle & User Account */}
+        {/* Right Tools */}
         <div className="flex items-center gap-2 shrink-0">
-          {/* Theme Toggle */}
           <ThemeToggle />
 
           {user ? (
             <div className="flex items-center gap-2">
               <div className="text-right hidden sm:block">
                 <div className="text-xs font-bold text-slate-800 dark:text-slate-100 leading-tight">
-                  {user.fullName}
+                  {displayName}
                 </div>
                 <div className="text-[10px] text-emerald-700 dark:text-emerald-400 font-semibold uppercase">
-                  {user.role.replace('_', ' ')}
+                  {(user.category || user.role).replace(/_/g, ' ')}
                 </div>
               </div>
 
-              <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/60 text-emerald-900 dark:text-emerald-200 font-bold flex items-center justify-center text-xs border border-emerald-300 dark:border-emerald-700">
-                {user.fullName.charAt(0)}
-              </div>
+              {/* Avatar: use fetched student photo, then direct user photo, then initials */}
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt={displayName}
+                  className="w-8 h-8 rounded-lg object-cover border border-emerald-300 dark:border-emerald-700"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/60 text-emerald-900 dark:text-emerald-200 font-bold flex items-center justify-center text-xs border border-emerald-300 dark:border-emerald-700">
+                  {displayName.charAt(0).toUpperCase()}
+                </div>
+              )}
 
               <button
                 onClick={logout}
@@ -222,7 +281,7 @@ export const Navbar: React.FC<Props> = ({
         >
           Admissions
         </button>
-        {user && (user.role === 'STUDENT' || user.role === 'SUPER_ADMIN') && (
+        {canViewStudentPortal && (
           <button
             onClick={() => setActiveTab('student')}
             className={`px-3 py-1 rounded-md shrink-0 font-medium ${
@@ -234,31 +293,30 @@ export const Navbar: React.FC<Props> = ({
             Student
           </button>
         )}
-        {user && ['LECTURER', 'HOD', 'DEAN', 'SUPER_ADMIN'].includes(user.role) && (
+        {canViewFacultyPortal && (
           <button
             onClick={() => setActiveTab('lecturer')}
             className={`px-3 py-1 rounded-md shrink-0 font-medium ${
               activeTab === 'lecturer'
                 ? 'bg-emerald-800 text-white dark:bg-emerald-700'
-              : 'text-slate-700 dark:text-slate-300'
+                : 'text-slate-700 dark:text-slate-300'
             }`}
           >
             Lecturer
           </button>
         )}
-        {user &&
-          ['SUPER_ADMIN', 'INSTITUTION_ADMIN', 'RECTOR', 'REGISTRAR', 'BURSAR'].includes(user.role) && (
-            <button
-              onClick={() => setActiveTab('admin')}
-              className={`px-3 py-1 rounded-md shrink-0 font-medium ${
-                activeTab === 'admin'
-                  ? 'bg-emerald-800 text-white dark:bg-emerald-700'
-                  : 'text-slate-700 dark:text-slate-300'
-              }`}
-            >
-              Management
-            </button>
-          )}
+        {canViewManagementPortal && (
+          <button
+            onClick={() => setActiveTab('admin')}
+            className={`px-3 py-1 rounded-md shrink-0 font-medium ${
+              activeTab === 'admin'
+                ? 'bg-emerald-800 text-white dark:bg-emerald-700'
+                : 'text-slate-700 dark:text-slate-300'
+            }`}
+          >
+            Management
+          </button>
+        )}
       </div>
     </header>
   );

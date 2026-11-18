@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { Student, Course, CourseRegistration, AssessmentResult, Invoice } from '../types';
@@ -24,6 +24,7 @@ interface Props {
 export const StudentPortal: React.FC<Props> = ({ onOpenPrintModal }) => {
   const { user, settings } = useAuth();
   const [student, setStudent] = useState<Student | null>(null);
+  const [myApplication, setMyApplication] = useState<any>(null);
   const [activeSection, setActiveSection] = useState<'courses' | 'results' | 'finance' | 'idcard'>('courses');
   const [eligibleCourses, setEligibleCourses] = useState<Course[]>([]);
   const [selectedCourseIds, setSelectedCourseIds] = useState<string[]>([]);
@@ -37,34 +38,36 @@ export const StudentPortal: React.FC<Props> = ({ onOpenPrintModal }) => {
     setLoading(true);
     try {
       const stdRes = await api.getMyStudentProfile();
+      const appRes = await api.getMyApplication();
+      if (appRes.success) setMyApplication(appRes.application);
       if (stdRes.success) {
         setStudent(stdRes.student);
 
-        // Fetch courses for their department
-        const crsRes = await api.getCourses({ departmentId: stdRes.student.departmentId });
+        if (!stdRes.student) {
+          console.warn('[StudentPortal] No student record for this user — skipping course/registration/results/invoice load.');
+          return;
+        }
+
+        const crsRes = await api.getCourses({ departmentId: stdRes.student?.departmentId });
         if (crsRes.success) {
           setEligibleCourses(crsRes.courses);
         }
 
-        // Fetch student registration
         const regRes = await api.getMyRegistration();
         if (regRes.success && regRes.registration) {
           setCurrentReg(regRes.registration);
           setSelectedCourseIds(regRes.registration.courseIds || []);
         } else {
-          // Preselect compulsory courses
           if (crsRes.success) {
             setSelectedCourseIds(crsRes.courses.map((c) => c.id));
           }
         }
 
-        // Fetch results
         const resRes = await api.getMyResults();
         if (resRes.success) {
           setResults(resRes.results);
         }
 
-        // Fetch invoices
         const invRes = await api.getInvoices();
         if (invRes.success) {
           setInvoices(invRes.invoices);
@@ -134,9 +137,17 @@ export const StudentPortal: React.FC<Props> = ({ onOpenPrintModal }) => {
       {/* Student Banner */}
       <div className="bg-linear-to-r from-emerald-950 via-emerald-900 to-slate-900 text-white rounded-3xl p-6 sm:p-8 shadow-sm flex flex-wrap items-center justify-between gap-6 border border-emerald-800">
         <div className="flex items-center gap-4">
-          <div className="w-16 h-16 rounded-2xl bg-emerald-800 text-amber-300 flex items-center justify-center font-bold text-3xl border-2 border-amber-400 shadow-md">
-            🎓
-          </div>
+          {student?.profileImageUrl ? (
+            <img
+              src={student.profileImageUrl}
+              alt={student.fullName || 'Student'}
+              className="w-16 h-16 rounded-2xl object-cover border-2 border-amber-400 shadow-md"
+            />
+          ) : (
+            <div className="w-16 h-16 rounded-2xl bg-emerald-800 text-amber-300 flex items-center justify-center font-bold text-3xl border-2 border-amber-400 shadow-md">
+              🎓
+            </div>
+          )}
           <div>
             <div className="flex items-center gap-2">
               <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-amber-400 text-slate-950 uppercase">
@@ -153,7 +164,7 @@ export const StudentPortal: React.FC<Props> = ({ onOpenPrintModal }) => {
               Matriculation No: <strong>{student?.matricNumber || 'EDOCASTI/ND/2024/0101'}</strong>
             </p>
             <p className="text-xs text-emerald-300/80 mt-0.5">
-              {student?.programmeName || 'National Diploma in Agricultural Technology'} • {student?.departmentName}
+              {student?.programmeName || 'National Diploma in Agricultural Technology'} â€¢ {student?.departmentName}
             </p>
           </div>
         </div>
@@ -173,10 +184,39 @@ export const StudentPortal: React.FC<Props> = ({ onOpenPrintModal }) => {
         </div>
       </div>
 
+      {/* Document Actions: Admission Letter & Application Form */}
+      <div className="flex flex-wrap justify-end gap-2">
+        <button
+          onClick={() => onOpenPrintModal('ADMISSION_LETTER', { 
+            ...student, 
+            applicationNumber: student?.matricNumber || 'EDOCASTI/2026/2C3549',
+            firstName: student?.fullName?.split(' ')[0] || 'Student',
+            lastName: student?.fullName?.split(' ')[1] || '',
+            programmeName: student?.programmeName || 'National Diploma in Agricultural Technology',
+            profileImageUrl: student?.profileImageUrl
+          })}
+          className="px-4 py-2 bg-white hover:bg-slate-50 text-emerald-800 font-bold text-xs rounded-xl border border-emerald-300 flex items-center gap-2 shadow-sm cursor-pointer transition"
+        >
+          <Printer className="w-4 h-4" /> View / Print Admission Letter
+        </button>
+
+        <button
+          onClick={() => onOpenPrintModal('APPLICATION_FORM', { 
+            ...myApplication,
+            profileImageUrl: myApplication?.profileImageUrl || student?.profileImageUrl,
+            programmeName: student?.programmeName || 'National Diploma in Agricultural Technology',
+            status: myApplication?.status || 'ACCEPTED'
+          })}
+          className="px-4 py-2 bg-white hover:bg-slate-50 text-emerald-800 font-bold text-xs rounded-xl border border-emerald-300 flex items-center gap-2 shadow-sm cursor-pointer transition"
+        >
+          <FileText className="w-4 h-4" /> View / Print Application Form
+        </button>
+      </div>
+
       {statusMessage && (
         <div className="p-4 bg-emerald-50 border border-emerald-300 rounded-xl text-xs text-emerald-900 flex items-center justify-between">
           <span>{statusMessage}</span>
-          <button onClick={() => setStatusMessage(null)} className="font-bold text-emerald-700">✕</button>
+          <button onClick={() => setStatusMessage(null)} className="font-bold text-emerald-700">âœ•</button>
         </div>
       )}
 
@@ -297,7 +337,7 @@ export const StudentPortal: React.FC<Props> = ({ onOpenPrintModal }) => {
                       <td className="p-3 text-center font-bold">{crs.creditUnits}</td>
                       <td className="p-3 text-slate-600">{crs.lecturerName || 'Faculty Assigned'}</td>
                       <td className="p-3 text-slate-500">
-                        {crs.level} • {crs.semester}
+                        {crs.level} â€¢ {crs.semester}
                       </td>
                     </tr>
                   );
@@ -428,7 +468,7 @@ export const StudentPortal: React.FC<Props> = ({ onOpenPrintModal }) => {
 
                   <h3 className="font-bold text-slate-900 text-sm mt-2">{inv.title}</h3>
                   <div className="text-2xl font-black text-emerald-950 mt-1">
-                    ₦{inv.amount.toLocaleString('en-NG')}
+                    â‚¦{inv.amount.toLocaleString('en-NG')}
                   </div>
                   <div className="text-xs text-slate-500 mt-1">Due Date: {inv.dueDate}</div>
                 </div>
@@ -455,7 +495,7 @@ export const StudentPortal: React.FC<Props> = ({ onOpenPrintModal }) => {
                       disabled={loading}
                       className="w-full py-2 bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-xs"
                     >
-                      <CreditCard className="w-4 h-4" /> Pay ₦{inv.amount.toLocaleString('en-NG')} via Remita
+                      <CreditCard className="w-4 h-4" /> Pay â‚¦{inv.amount.toLocaleString('en-NG')} via Remita
                     </button>
                   )}
                 </div>
@@ -475,7 +515,33 @@ export const StudentPortal: React.FC<Props> = ({ onOpenPrintModal }) => {
 
           <div className="flex justify-center py-4">
             <button
-              onClick={() => onOpenPrintModal('STUDENT_ID', { student })}
+              onClick={async () => {
+                let s: any = (student || {});
+                try {
+                  const fresh: any = await api.getMyStudentProfile();
+                  const incoming = fresh?.student || fresh?.data?.student || (fresh as any);
+                  if (incoming && (incoming.id || incoming.matricNumber || incoming.userId)) {
+                    s = incoming;
+                  }
+                  console.log('[ID CARD] fresh student payload:', s);
+                } catch (e) {
+                  console.warn('Could not refresh student record before opening ID card', e);
+                }
+                const u = (user || {}) as any;
+                const photo =
+                  s.profileImageUrl ||
+                  s.photo ||
+                  s.photoUrl ||
+                  s.image ||
+                  s.avatarUrl ||
+                  u.profileImageUrl ||
+                  u.photo ||
+                  u.photoUrl ||
+                  u.image ||
+                  u.avatarUrl ||
+                  '';
+                onOpenPrintModal('STUDENT_ID', { student: { ...s, profileImageUrl: photo } });
+              }}
               className="px-5 py-2.5 bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs rounded-xl flex items-center gap-2 cursor-pointer shadow-md"
             >
               <Printer className="w-4 h-4" /> Print / Save Full-Scale ID Card
@@ -486,3 +552,4 @@ export const StudentPortal: React.FC<Props> = ({ onOpenPrintModal }) => {
     </div>
   );
 };
+

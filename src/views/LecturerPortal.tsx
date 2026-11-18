@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { Course, Student, AssessmentResult } from '../types';
@@ -36,26 +36,36 @@ export const LecturerPortal: React.FC = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const crsRes = await api.getCourses();
+      const isLecturer = user?.category === 'LECTURER';
+
+      const crsRes = isLecturer
+        ? await api.getLecturerCourses()
+        : await api.getCourses();
+
       if (crsRes.success) {
-        // Filter courses or show all for HOD / Super Admin
-        let myCourses = crsRes.courses;
-        if (user?.role === 'LECTURER') {
-          myCourses = crsRes.courses.filter((c) => c.lecturerId === user.id || !c.lecturerId);
-        }
+        const myCourses = crsRes.courses || [];
         setCourses(myCourses);
+
         if (myCourses.length > 0 && !selectedCourse) {
           setSelectedCourse(myCourses[0]);
         }
       }
 
-      const stdRes = await api.getStudents();
-      if (stdRes.success) {
-        setStudents(stdRes.students);
-        // Initialize attendance checks
-        const checks: Record<string, boolean> = {};
-        stdRes.students.forEach((s) => (checks[s.id] = true));
-        setAttendanceChecks(checks);
+      if (isLecturer) {
+        setStudents([]);
+        setAttendanceChecks({});
+      } else {
+        const stdRes = await api.getStudents();
+        if (stdRes.success) {
+          const roster = stdRes.students || [];
+          setStudents(roster);
+
+          const checks: Record<string, boolean> = {};
+          roster.forEach((student) => {
+            checks[student.id] = true;
+          });
+          setAttendanceChecks(checks);
+        }
       }
     } catch (err: any) {
       console.error(err);
@@ -68,21 +78,73 @@ export const LecturerPortal: React.FC = () => {
     loadData();
   }, [user]);
 
-  // Load results for selected course
+  // Load the selected course roster and results.
   useEffect(() => {
-    if (selectedCourse) {
-      api.getResults({ courseId: selectedCourse.id }).then((res) => {
-        if (res.success) {
-          setResults(res.results);
+    const isLecturer = user?.category === 'LECTURER';
+
+    if (!selectedCourse) {
+      if (isLecturer) {
+        setStudents([]);
+        setAttendanceChecks({});
+      }
+      setResults([]);
+      setScoreInputs({});
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadSelectedCourse = async () => {
+      if (isLecturer) {
+        setStudents([]);
+        setAttendanceChecks({});
+
+        try {
+          const rosterRes = await api.getLecturerCourseRoster(
+            String(selectedCourse.id)
+          );
+
+          if (!cancelled && rosterRes.success) {
+            const roster = rosterRes.students || [];
+            setStudents(roster);
+
+            const checks: Record<string, boolean> = {};
+            roster.forEach((student) => {
+              checks[student.id] = true;
+            });
+            setAttendanceChecks(checks);
+          }
+        } catch (err) {
+          if (!cancelled) console.error(err);
+        }
+      }
+
+      try {
+        const res = await api.getResults({ courseId: selectedCourse.id });
+
+        if (!cancelled && res.success) {
+          setResults(res.results || []);
+
           const matrix: Record<string, { ca: number; exam: number }> = {};
-          res.results.forEach((r) => {
-            matrix[r.studentId] = { ca: r.caScore, exam: r.examScore };
+          (res.results || []).forEach((result) => {
+            matrix[result.studentId] = {
+              ca: result.caScore,
+              exam: result.examScore,
+            };
           });
           setScoreInputs(matrix);
         }
-      });
-    }
-  }, [selectedCourse]);
+      } catch (err) {
+        if (!cancelled) console.error(err);
+      }
+    };
+
+    loadSelectedCourse();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCourse, user]);
 
   const handleScoreChange = (studentId: string, field: 'ca' | 'exam', val: number) => {
     const current = scoreInputs[studentId] || { ca: 0, exam: 0 };
@@ -392,3 +454,4 @@ export const LecturerPortal: React.FC = () => {
     </div>
   );
 };
+

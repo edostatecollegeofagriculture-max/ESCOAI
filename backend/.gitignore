@@ -1,0 +1,39 @@
+﻿# Environment variables and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python environments
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Runtime files
+instance/
+*.log
+
+# Local databases
+*.sqlite
+*.sqlite3
+*.db
+
+# Local backups
+*_backup*/
+*backup_*/
+security_fix_backup_*/
+*.backup_*
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

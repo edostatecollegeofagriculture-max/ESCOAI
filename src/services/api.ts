@@ -73,6 +73,13 @@ class ApiService {
     });
   }
 
+  devQuickLogin(role: 'SUPER_ADMIN' | 'ADMIN' | 'USER' | 'INSTITUTION_ADMIN' | 'RECTOR' | 'REGISTRAR' | 'ADMISSIONS_OFFICER' | 'DEAN' | 'HOD' | 'LECTURER' | 'EXAM_OFFICER' | 'BURSAR' | 'CONTENT_EDITOR' | 'ICT_ADMIN' | 'SUPPORT_OFFICER' | 'STUDENT' | 'APPLICANT') {
+    return this.request<{ success: boolean; token: string; user: any }>('/auth/dev-quick-login', {
+      method: 'POST',
+      body: JSON.stringify({ role }),
+    });
+  }
+
   registerApplicant(payload: { email: string; password: string; fullName: string; phone?: string }) {
     return this.request<{ success: boolean; token: string; user: any }>('/auth/register-applicant', {
       method: 'POST',
@@ -132,8 +139,35 @@ class ApiService {
     return this.request<{ success: boolean; departments: any[] }>('/academics/departments');
   }
 
+  createDepartment(payload: {
+    schoolId: string;
+    code: string;
+    name: string;
+    description?: string;
+  }) {
+    return this.request<{ success: boolean; department: any }>('/academics/departments', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
   getProgrammes() {
     return this.request<{ success: boolean; programmes: any[] }>('/academics/programmes');
+  }
+
+  createProgramme(payload: {
+    departmentId: string;
+    code: string;
+    name: string;
+    qualification: 'ND' | 'HND' | 'Certificate';
+    durationYears: number;
+    description?: string;
+    requirements?: string[];
+  }) {
+    return this.request<{ success: boolean; programme: any }>('/academics/programmes', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
   }
 
   getCourses(params?: any) {
@@ -141,6 +175,15 @@ class ApiService {
     return this.request<{ success: boolean; courses: any[] }>(`/academics/courses${q ? `?${q}` : ''}`);
   }
 
+
+  getLecturerCourses() {
+    return this.request<{ success: boolean; courses: any[] }>('/lecturer/courses');
+  }
+
+  getLecturerCourseRoster(courseId: string) {
+    const q = new URLSearchParams({ courseId }).toString();
+    return this.request<{ success: boolean; students: any[] }>(`/lecturer/course-roster?${q}`);
+  }
   createCourse(payload: any) {
     return this.request<{ success: boolean; course: any }>('/academics/courses', {
       method: 'POST',
@@ -182,6 +225,32 @@ class ApiService {
   getStudents(params?: any) {
     const q = new URLSearchParams(params).toString();
     return this.request<{ success: boolean; students: any[] }>(`/students${q ? `?${q}` : ''}`);
+  }
+
+  updateStudent(id: string, payload: any) {
+    return this.request<{ success: boolean; message: string; student: any }>(`/students/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  deleteStudent(id: string) {
+    return this.request<{ success: boolean; message: string }>(`/students/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+  }
+
+  updateApplication(id: string, payload: any) {
+    return this.request<{ success: boolean; message: string; application: any }>(`/admissions/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  deleteApplication(id: string) {
+    return this.request<{ success: boolean; message: string }>(`/admissions/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
   }
 
   getMyStudentProfile() {
@@ -315,7 +384,12 @@ class ApiService {
 
   // Content Management System (CMS) - News
   getNews(params?: { category?: string; status?: string; sliderOnly?: boolean; search?: string }) {
-    const q = new URLSearchParams(params as any).toString();
+    const queryParams = Object.fromEntries(
+      Object.entries(params || {}).filter(
+        ([, value]) => value !== undefined && value !== null && value !== ''
+      )
+    );
+    const q = new URLSearchParams(queryParams as any).toString();
     return this.request<{ success: boolean; articles: any[] }>(`/cms/news${q ? `?${q}` : ''}`);
   }
 
@@ -374,6 +448,98 @@ class ApiService {
       method: 'DELETE',
     });
   }
+
+  // CMS - Institutional Leadership Profiles
+  getLeadership(params?: any) {
+    const q = new URLSearchParams(params as any).toString();
+    return this.request<{ success: boolean; leadership: any[] }>(
+      `/cms/leadership${q ? `?${q}` : ''}`
+    );
+  }
+
+  createLeadership(payload: any) {
+    return this.request<{ success: boolean; record: any }>('/cms/leadership', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  updateLeadership(id: string, payload: any) {
+    return this.request<{ success: boolean; record: any }>(`/cms/leadership/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  deleteLeadership(id: string) {
+    return this.request<{ success: boolean; message: string }>(`/cms/leadership/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // CMS - Frequently Asked Questions
+  getFaqs(params?: any) {
+    const q = new URLSearchParams(params as any).toString();
+    return this.request<{ success: boolean; faqs: any[] }>(
+      `/cms/faqs${q ? `?${q}` : ''}`
+    );
+  }
+
+  createFaq(payload: any) {
+    return this.request<{ success: boolean; record: any }>('/cms/faqs', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  updateFaq(id: string, payload: any) {
+    return this.request<{ success: boolean; record: any }>(`/cms/faqs/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  deleteFaq(id: string) {
+    return this.request<{ success: boolean; message: string }>(`/cms/faqs/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // CMS - Academic Calendar
+  getAcademicCalendar(params?: any) {
+    const q = new URLSearchParams(params as any).toString();
+    return this.request<{ success: boolean; calendar: any[] }>(
+      `/cms/calendar${q ? `?${q}` : ''}`
+    );
+  }
+
+  createCalendarEvent(payload: any) {
+    return this.request<{ success: boolean; record: any }>('/cms/calendar', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  updateCalendarEvent(id: string, payload: any) {
+    return this.request<{ success: boolean; record: any }>(`/cms/calendar/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  deleteCalendarEvent(id: string) {
+    return this.request<{ success: boolean; message: string }>(`/cms/calendar/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  logout() {
+    return this.request<{ success: boolean; message?: string }>('/auth/logout', {
+      method: 'POST',
+    });
+  }
 }
 
 export const api = new ApiService();
+
+

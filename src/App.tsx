@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
+import { useDynamicFavicon } from './hooks/useDynamicFavicon';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { Navbar } from './components/Navbar';
@@ -14,6 +15,7 @@ import { SchoolLogo } from './components/SchoolLogo';
 
 const MainApp: React.FC = () => {
   const { user, settings } = useAuth();
+  useDynamicFavicon((settings as any)?.documents?.faviconUrl || settings?.faviconUrl);
   const [activeTab, setActiveTab] = useState('public');
   const [activeSubSection, setActiveSubSection] = useState<string | undefined>('overview');
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);

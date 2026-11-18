@@ -1,35 +1,51 @@
+﻿# Dependencies
 node_modules/
-dist/
-.vercel/
-.env
-.env.*
-!.env.example
 .venv/
-__pycache__/
-*.py[cod]
-backend/*.db
-backend/instance/
-.pytest_cache/
-.coverage
 
-# Environment secrets
-.env
-.env.*
-!.env.example
-!.env.*.example
-
-# Python
-__pycache__/
-*.py[cod]
-.venv/
-venv/
-.pytest_cache/
-
-# Node
-node_modules/
+# Build outputs
 dist/
+build/
 
-# Local databases and uploaded files
-instance/
-*.sqlite
-*.sqlite3
+# Anything with backup/bak in the name (anywhere, any extension)
+*bak*
+*backup*
+*.zip
+backups/
+
+# Patch and temporary scripts (in any folder)
+patch_*.py
+fix_*.py
+show_*.py
+check_*.py
+verify_*.py
+find_header.py
+create_superadmin_user.py
+reset_*.py
+init_db.py
+inspect_admission.py
+seed_real_data.py
+_audit_*.py
+add_audit_log.py
+
+# Specific test backup patterns
+*.py.batch*
+*.py.postgresql*
+
+# Text/Audit docs
+Documentation.txt
+EDOCASTI_*.txt
+backend/EDOCASTI_*.txt
+backend/test_results_full.txt
+
+# Environment variables
+.env
+.env.local
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Nested repositories
+EDSCOAI/

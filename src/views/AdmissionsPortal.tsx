@@ -1,19 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { AdmissionApplication, Programme } from '../types';
-import {
-  FileText,
-  CheckCircle,
-  Clock,
-  XCircle,
-  Award,
-  Send,
-  Printer,
-  ChevronRight,
-  AlertCircle,
-  Sparkles,
-} from 'lucide-react';
+import { FileText, CheckCircle, Clock, XCircle, Award, Send, Printer, ChevronRight, AlertCircle, Sparkles, Plus, Trash2, Info } from 'lucide-react';
 
 interface Props {
   onOpenPrintModal: (type: any, data: any) => void;
@@ -21,58 +10,176 @@ interface Props {
   onOpenLoginModal: () => void;
 }
 
+const SUBJECT_OPTIONS = [
+  'English Language', 'Mathematics', 'Agricultural Science', 'Biology', 'Chemistry',
+  'Physics', 'Economics', 'Government', 'Literature in English', 'Christian Religious Studies',
+  'Islamic Religious Studies', 'Geography', 'Further Mathematics', 'Technical Drawing',
+  'Food and Nutrition', 'Home Management', 'Commerce', 'Financial Accounting',
+  'Marketing', 'Office Practice', 'Animal Husbandry', 'Fisheries', 'Civic Education',
+];
+
+const GRADE_OPTIONS = ['A1', 'B2', 'B3', 'C4', 'C5', 'C6', 'D7', 'E8', 'F9'];
+
+interface OLevelResult {
+  subject: string;
+  grade: string;
+}
+
 export const AdmissionsPortal: React.FC<Props> = ({
   onOpenPrintModal,
   onGoToStudentWorkspace,
   onOpenLoginModal,
 }) => {
-  const { user, settings } = useAuth();
+  const { user, settings, refreshUserData } = useAuth();
+  const [schools, setSchools] = useState<any[]>([]);
   const [programmes, setProgrammes] = useState<Programme[]>([]);
   const [myApp, setMyApp] = useState<AdmissionApplication | null>(null);
   const [allApps, setAllApps] = useState<AdmissionApplication[]>([]);
   const [selectedApp, setSelectedApp] = useState<AdmissionApplication | null>(null);
   const [loading, setLoading] = useState(false);
+  const [acceptingOffer, setAcceptingOffer] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Form State
+  // --- SUPER ADMIN EDIT / DELETE STATE & HANDLERS ---
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [editingApp, setEditingApp] = useState<any | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+
+  const handleDeleteApp = async (app: AdmissionApplication) => {
+    if (!window.confirm('Delete application ' + app.applicationNumber + '?\n\nThe application row will be removed, but the login account is retained.')) return;
+    setDeletingId(app.id);
+    try {
+      const base = import.meta.env.VITE_API_URL || 'http://127.0.0.1:5000';
+      const token = localStorage.getItem('edocasti_token');
+      const response = await fetch(base + '/api/v1/admissions/' + app.id, {
+        method: 'DELETE',
+        headers: { Authorization: 'Bearer ' + token }
+      });
+      const res = await response.json();
+      if (res.success) {
+        setAllApps(prev => prev.filter(a => a.id !== app.id));
+        setSuccessMsg(res.message || 'Application deleted successfully.');
+      } else {
+        throw new Error(res.message || 'Failed to delete');
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Delete failed');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleEditSave = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!editingApp) return;
+    setSavingEdit(true);
+    const payload = Object.fromEntries(new FormData(e.currentTarget).entries());
+    try {
+      const base = import.meta.env.VITE_API_URL || 'http://127.0.0.1:5000';
+      const token = localStorage.getItem('edocasti_token');
+      const response = await fetch(base + '/api/v1/admissions/' + editingApp.id, {
+        method: 'PUT',
+        headers: { 
+          Authorization: 'Bearer ' + token,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+      const res = await response.json();
+      if (res.success) {
+        setAllApps(prev => prev.map(a => a.id === editingApp.id ? res.application : a));
+        setEditingApp(null);
+        setSuccessMsg('Applicant record updated successfully.');
+      } else {
+        throw new Error(res.message || 'Update failed');
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Update failed');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+  // --- END SUPER ADMIN LOGIC ---
+
+  // Guard so the auto-navigation to the student workspace fires only once per acceptance.
+  const transitionNavigatedRef = useRef(false);
+
+  // Registration Form State
+  const [registerForm, setRegisterForm] = useState({
+    fullName: '',
+    email: '',
+    password: '',
+    phone: '',
+  });
+  const [registerMessage, setRegisterMessage] = useState<string | null>(null);
+  const [registerLoading, setRegisterLoading] = useState(false);
+
+  // Application Form State
   const [formData, setFormData] = useState({
-    firstName: user?.fullName.split(' ')[0] || '',
-    lastName: user?.fullName.split(' ')[1] || '',
+    firstName: '',
+    lastName: '',
     otherNames: '',
-    gender: 'Male',
-    dob: '2005-06-15',
-    phone: user?.phone || '+234 810 000 0000',
-    programmeId: 'prog-nd-agric',
-    stateOfOrigin: 'Edo State',
-    lga: 'Oredo',
-    residentialAddress: 'Benin City, Edo State',
-    oLevel1Subject: 'English Language',
-    oLevel1Grade: 'C4',
-    oLevel2Subject: 'Mathematics',
-    oLevel2Grade: 'B3',
-    oLevel3Subject: 'Agricultural Science',
-    oLevel3Grade: 'A1',
-    oLevel4Subject: 'Biology',
-    oLevel4Grade: 'B2',
-    oLevel5Subject: 'Chemistry',
-    oLevel5Grade: 'C5',
-    examType: 'WAEC',
-    examNumber: '420199201',
+    gender: '',
+    dob: '',
+    phone: '',
+    programmeId: '',
+    stateOfOrigin: '',
+    lga: '',
+    residentialAddress: '',
   });
 
-  // Review decision state for staff
+  const [profileImageUrl, setProfileImageUrl] = useState('');
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingPhoto(true);
+    setPhotoError(null);
+    try {
+      const res = await api.uploadFile(file, 'applicant-photos');
+      if (res.success && res.url) {
+        setProfileImageUrl(res.url);
+      } else {
+        setPhotoError('Photo upload failed. Please try again.');
+      }
+    } catch (err: any) {
+      setPhotoError(err?.message || 'Photo upload failed.');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  const [oLevelResults, setOLevelResults] = useState<OLevelResult[]>([
+    { subject: '', grade: '' },
+    { subject: '', grade: '' },
+    { subject: '', grade: '' },
+    { subject: '', grade: '' },
+    { subject: '', grade: '' },
+  ]);
+
+  const [examType, setExamType] = useState('');
+  const [examNumber, setExamNumber] = useState('');
+
   const [decisionStatus, setDecisionStatus] = useState<'OFFERED' | 'REJECTED' | 'UNDER_REVIEW'>('OFFERED');
   const [screeningNotes, setScreeningNotes] = useState('');
 
   const isStaff =
     user && ['SUPER_ADMIN', 'INSTITUTION_ADMIN', 'REGISTRAR', 'ADMISSIONS_OFFICER'].includes(user.role);
 
+  const isApplicant = user && user.role === 'USER' && user.category === 'APPLICANT';
+
   const loadData = async () => {
     setLoading(true);
     try {
       const progRes = await api.getProgrammes();
       if (progRes.success) setProgrammes(progRes.programmes);
+
+      const schoolRes = await api.getSchools();
+      if (schoolRes.success) setSchools(schoolRes.schools);
 
       if (user) {
         if (isStaff) {
@@ -98,36 +205,52 @@ export const AdmissionsPortal: React.FC<Props> = ({
     loadData();
   }, [user]);
 
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRegisterLoading(true);
+    setRegisterMessage(null);
+    try {
+      const res = await api.registerApplicant(registerForm);
+      if (res.success) {
+        api.setToken(res.token);
+        localStorage.setItem('edocasti_token', res.token);
+        setRegisterMessage('Account created successfully! You can now submit your application.');
+        setRegisterForm({ fullName: '', email: '', password: '', phone: '' });
+        window.location.reload();
+      } else {
+        setRegisterMessage('Registration failed.');
+      }
+    } catch (err: any) {
+      setRegisterMessage(err.message || 'Registration failed.');
+    } finally {
+      setRegisterLoading(false);
+    }
+  };
+
   const handleSubmitApplication = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) {
-      onOpenLoginModal();
+    setLoading(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    const validResults = oLevelResults.filter(r => r.subject && r.grade);
+    if (validResults.length < 5) {
+      setErrorMsg('Please provide at least 5 O-Level subjects with grades.');
+      setLoading(false);
       return;
     }
 
-    setLoading(true);
-    setErrorMsg(null);
     try {
       const payload = {
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        otherNames: formData.otherNames,
-        gender: formData.gender,
-        dob: formData.dob,
-        phone: formData.phone,
-        programmeId: formData.programmeId,
-        stateOfOrigin: formData.stateOfOrigin,
-        lga: formData.lga,
-        residentialAddress: formData.residentialAddress,
-        oLevelResults: [
-          { subject: formData.oLevel1Subject, grade: formData.oLevel1Grade, examNumber: formData.examNumber, examType: formData.examType },
-          { subject: formData.oLevel2Subject, grade: formData.oLevel2Grade, examNumber: formData.examNumber, examType: formData.examType },
-          { subject: formData.oLevel3Subject, grade: formData.oLevel3Grade, examNumber: formData.examNumber, examType: formData.examType },
-          { subject: formData.oLevel4Subject, grade: formData.oLevel4Grade, examNumber: formData.examNumber, examType: formData.examType },
-          { subject: formData.oLevel5Subject, grade: formData.oLevel5Grade, examNumber: formData.examNumber, examType: formData.examType },
-        ],
+        ...formData,
+        profileImageUrl: profileImageUrl || '',
+        oLevelResults: validResults.map(r => ({
+          subject: r.subject,
+          grade: r.grade,
+          examNumber: examNumber,
+          examType: examType,
+        })),
       };
-
       const res = await api.submitApplication(payload);
       if (res.success) {
         setMyApp(res.application);
@@ -160,575 +283,665 @@ export const AdmissionsPortal: React.FC<Props> = ({
   };
 
   const handleAcceptOffer = async (appId: string) => {
-    setLoading(true);
+    if (acceptingOffer) return;
+
+    if (!appId || !String(appId).trim()) {
+      setErrorMsg('The application reference could not be identified. Please refresh the page and try again.');
+      return;
+    }
+
+    setAcceptingOffer(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
     try {
-      const res = await api.acceptOffer(appId);
-      if (res.success) {
-        setSuccessMsg('Congratulations! Admission offer accepted. You are now fully onboarded as an EDOCASTI student!');
-        loadData();
-        setTimeout(() => {
-          onGoToStudentWorkspace();
-        }, 1500);
+      const res = await api.acceptOffer(String(appId));
+
+      if (!res || res.success !== true) {
+        setErrorMsg(res?.message || 'The admission offer could not be accepted. Please try again.');
+        return;
+      }
+
+      setMyApp((prev: any) => prev ? { ...prev, status: 'ACCEPTED' } : null);
+      setSuccessMsg(
+        res.message || 'Congratulations! Your admission offer has been accepted and your student profile is active.'
+      );
+
+      await loadData();
+
+      // Rehydrate AuthContext.user so category flips APPLICANT -> STUDENT
+      // before the student workspace mounts. Otherwise StudentPortal would
+      // render with a stale applicant context.
+      await refreshUserData();
+
+      // Auto-navigate to the student workspace once, only after the reload succeeded.
+      if (!transitionNavigatedRef.current) {
+        transitionNavigatedRef.current = true;
+        onGoToStudentWorkspace();
       }
     } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to accept offer');
+      setErrorMsg(err?.message || 'Failed to accept your admission offer. Please try again.');
     } finally {
-      setLoading(false);
+      setAcceptingOffer(false);
     }
   };
 
-  return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-      {/* Title */}
-      <div className="border-b border-slate-200 pb-4 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <span className="text-xs font-bold uppercase tracking-wider text-emerald-800">
-            Admissions Registry
-          </span>
-          <h1 className="text-2xl font-bold text-slate-900 mt-0.5">
-            {isStaff ? 'Admissions Committee Screening Portal' : '2025/2026 Online Admission & Screening'}
-          </h1>
-          <p className="text-xs text-slate-500 mt-1">
-            Official National Diploma (ND) and Higher National Diploma (HND) application processing.
+  const addSubjectRow = () => {
+    setOLevelResults([...oLevelResults, { subject: '', grade: '' }]);
+  };
+
+  const removeSubjectRow = (index: number) => {
+    if (oLevelResults.length <= 5) return;
+    setOLevelResults(oLevelResults.filter((_, i) => i !== index));
+  };
+
+  const updateSubject = (index: number, field: 'subject' | 'grade', value: string) => {
+    const updated = [...oLevelResults];
+    updated[index][field] = value;
+    setOLevelResults(updated);
+  };
+
+  // Not logged in → Show registration form
+  if (!user) {
+    return (
+      <div className='p-6 bg-gray-50 min-h-screen'>
+        <div className='max-w-md mx-auto bg-white rounded-2xl border border-slate-200 p-6 shadow-xs'>
+          <h2 className='text-lg font-bold text-slate-900 mb-4'>Create Applicant Account</h2>
+          <p className='text-xs text-slate-500 mb-4'>Register to apply for admission.</p>
+          <form onSubmit={handleRegister} className='space-y-3 text-xs'>
+            <div>
+              <label className='block text-slate-600 font-semibold mb-1'>Full Name</label>
+              <input
+                type='text'
+                required
+                value={registerForm.fullName}
+                onChange={(e) => setRegisterForm({ ...registerForm, fullName: e.target.value })}
+                placeholder='e.g. John Doe'
+                className='w-full p-2 border border-slate-300 rounded-lg text-xs'
+              />
+            </div>
+            <div>
+              <label className='block text-slate-600 font-semibold mb-1'>Email</label>
+              <input
+                type='email'
+                required
+                value={registerForm.email}
+                onChange={(e) => setRegisterForm({ ...registerForm, email: e.target.value })}
+                placeholder='e.g. john@example.com'
+                className='w-full p-2 border border-slate-300 rounded-lg text-xs'
+              />
+            </div>
+            <div>
+              <label className='block text-slate-600 font-semibold mb-1'>Password (min 12 chars)</label>
+              <input
+                type='password'
+                required
+                minLength={12}
+                value={registerForm.password}
+                onChange={(e) => setRegisterForm({ ...registerForm, password: e.target.value })}
+                placeholder='••••••••'
+                className='w-full p-2 border border-slate-300 rounded-lg text-xs'
+              />
+            </div>
+            <div>
+              <label className='block text-slate-600 font-semibold mb-1'>Phone (optional)</label>
+              <input
+                type='text'
+                value={registerForm.phone}
+                onChange={(e) => setRegisterForm({ ...registerForm, phone: e.target.value })}
+                placeholder='e.g. +234 803 000 1234'
+                className='w-full p-2 border border-slate-300 rounded-lg text-xs'
+              />
+            </div>
+            <button
+              type='submit'
+              disabled={registerLoading}
+              className='w-full py-2 bg-emerald-800 hover:bg-emerald-900 text-white font-bold rounded-lg cursor-pointer'
+            >
+              Register Account
+            </button>
+          </form>
+          {registerMessage && <p className='mt-3 text-xs text-center text-emerald-700'>{registerMessage}</p>}
+          <p className='mt-4 text-xs text-center text-slate-500'>
+            Already have an account? <button onClick={onOpenLoginModal} className='text-emerald-700 font-bold'>Sign In</button>
           </p>
         </div>
-
-        {myApp && (
-          <button
-            onClick={() => onOpenPrintModal('ADMISSION_LETTER', myApp)}
-            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-xs rounded-lg flex items-center gap-1.5 transition cursor-pointer"
-          >
-            <Printer className="w-4 h-4" /> Print Application Slip
-          </button>
-        )}
       </div>
+    );
+  }
 
-      {successMsg && (
-        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-center justify-between">
-          <span>{successMsg}</span>
-          <button onClick={() => setSuccessMsg(null)} className="font-bold text-emerald-600">✕</button>
-        </div>
-      )}
-
-      {errorMsg && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-xs text-red-800 flex items-center justify-between">
-          <span>{errorMsg}</span>
-          <button onClick={() => setErrorMsg(null)} className="font-bold text-red-600">✕</button>
-        </div>
-      )}
-
-      {/* STAFF VIEW: Applications Table */}
-      {isStaff && (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden space-y-4 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-base font-bold text-slate-900 dark:text-white">Submitted Applicant Register</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Screen credentials, inspect O-Level grades, and record admission decisions.</p>
-            </div>
-            <span className="px-3 py-1 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-xs font-bold rounded-lg">
-              Total Applicants: {allApps.length}
-            </span>
-          </div>
-
-          <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-xl">
-            <table className="w-full text-xs text-left">
-              <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 uppercase font-bold text-[11px]">
-                <tr>
-                  <th className="p-3">Ref Number</th>
-                  <th className="p-3">Applicant Name</th>
-                  <th className="p-3">Programme</th>
-                  <th className="p-3">O-Level Highlights</th>
-                  <th className="p-3">Status</th>
-                  <th className="p-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                {allApps.map((app) => (
-                  <tr key={app.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
-                    <td className="p-3 font-mono font-bold text-emerald-900 dark:text-emerald-400">{app.applicationNumber}</td>
-                    <td className="p-3 font-semibold text-slate-900 dark:text-white uppercase">
-                      {app.firstName} {app.lastName}
-                    </td>
-                    <td className="p-3 text-slate-700 dark:text-slate-300">
-                      {programmes.find((p) => p.id === app.programmeId)?.name || 'Agricultural Technology'}
-                    </td>
-                    <td className="p-3">
-                      <span className="text-[11px] bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-700 dark:text-slate-300 font-mono">
-                        {app.oLevelResults?.length || 5} Subjects Verified
-                      </span>
-                    </td>
-                    <td className="p-3">
-                      <span
-                        className={`px-2.5 py-1 text-[11px] font-bold rounded-full ${
-                          app.status === 'OFFERED'
-                            ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300'
-                            : app.status === 'ACCEPTED'
-                            ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300'
-                            : app.status === 'REJECTED'
-                            ? 'bg-red-100 dark:bg-red-950/60 text-red-800 dark:text-red-300'
-                            : 'bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300'
-                        }`}
-                      >
-                        {app.status}
-                      </span>
-                    </td>
-                    <td className="p-3 text-right space-x-2">
-                      <button
-                        onClick={() => {
-                          setSelectedApp(app);
-                          setDecisionStatus(app.status === 'REJECTED' ? 'REJECTED' : 'OFFERED');
-                          setScreeningNotes(app.screeningNotes || '');
-                        }}
-                        className="px-2.5 py-1 bg-emerald-800 hover:bg-emerald-900 dark:bg-emerald-700 dark:hover:bg-emerald-600 text-white font-semibold rounded cursor-pointer text-xs"
-                      >
-                        Screen & Decide
-                      </button>
-                      <button
-                        onClick={() => onOpenPrintModal('ADMISSION_LETTER', app)}
-                        className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded cursor-pointer text-xs"
-                      >
-                        Letter
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Decision Modal / Drawer */}
-          {selectedApp && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
-              <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-xl w-full p-6 space-y-4 border border-slate-200 dark:border-slate-800 shadow-2xl">
-                <div className="flex justify-between items-start border-b border-slate-100 dark:border-slate-800 pb-3">
-                  <div>
-                    <h3 className="font-bold text-slate-900 dark:text-white text-base">
-                      Screening Application: {selectedApp.applicationNumber}
-                    </h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 uppercase">
-                      {selectedApp.firstName} {selectedApp.lastName} • {selectedApp.stateOfOrigin} ({selectedApp.lga})
-                    </p>
-                  </div>
-                  <button onClick={() => setSelectedApp(null)} className="text-slate-400 hover:text-slate-700 dark:hover:text-white">✕</button>
-                </div>
-
-                <div className="space-y-3">
-                  <div>
-                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase block mb-1">
-                      Submitted O-Level Results (WAEC/NECO):
-                    </span>
-                    <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 dark:bg-slate-800/60 p-3 rounded-lg border border-slate-200 dark:border-slate-700">
-                      {selectedApp.oLevelResults?.map((r, i) => (
-                        <div key={i} className="flex justify-between border-b border-slate-200 dark:border-slate-700 pb-1">
-                          <span className="text-slate-600 dark:text-slate-400">{r.subject}:</span>
-                          <span className="font-bold font-mono text-emerald-800 dark:text-emerald-400">{r.grade}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase block mb-1">
-                      Admission Decision
-                    </label>
-                    <select
-                      value={decisionStatus}
-                      onChange={(e: any) => setDecisionStatus(e.target.value)}
-                      className="w-full text-xs p-2 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg"
-                    >
-                      <option value="OFFERED">Grant Provisional Offer of Admission (OFFERED)</option>
-                      <option value="UNDER_REVIEW">Place Under Review (UNDER_REVIEW)</option>
-                      <option value="REJECTED">Decline Application (REJECTED)</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase block mb-1">
-                      Screening Notes & Comments
-                    </label>
-                    <textarea
-                      rows={3}
-                      value={screeningNotes}
-                      onChange={(e) => setScreeningNotes(e.target.value)}
-                      placeholder="Add official screening comments regarding qualification eligibility..."
-                      className="w-full text-xs p-2 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
-                  <button
-                    onClick={() => setSelectedApp(null)}
-                    className="px-4 py-2 text-xs bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg font-semibold cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={() => handleDecisionSubmit(selectedApp.id)}
-                    className="px-4 py-2 text-xs bg-emerald-800 hover:bg-emerald-900 dark:bg-emerald-700 dark:hover:bg-emerald-600 text-white font-semibold rounded-lg cursor-pointer"
-                  >
-                    Confirm & Publish Decision
-                  </button>
-                </div>
+  // Logged in as Applicant with no application → Show application form
+  if (isApplicant && !myApp) {
+    return (
+      <div className='p-6 bg-gray-50 min-h-screen'>
+        <div className='max-w-2xl mx-auto bg-white rounded-2xl border border-slate-200 p-6 shadow-xs'>
+          <h2 className='text-lg font-bold text-slate-900 mb-4'>Submit Admission Application</h2>
+          <p className='text-xs text-slate-500 mb-4'>Fill in your details and qualifications to apply.</p>
+          <form onSubmit={handleSubmitApplication} className='space-y-4 text-xs'>
+            <div className='grid grid-cols-2 gap-4'>
+              <div>
+                <label className='block text-slate-600 font-semibold mb-1'>First Name</label>
+                <input
+                  type='text'
+                  required
+                  value={formData.firstName}
+                  onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                  className='w-full p-2 border border-slate-300 rounded-lg text-xs'
+                />
+              </div>
+              <div>
+                <label className='block text-slate-600 font-semibold mb-1'>Last Name</label>
+                <input
+                  type='text'
+                  required
+                  value={formData.lastName}
+                  onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                  className='w-full p-2 border border-slate-300 rounded-lg text-xs'
+                />
               </div>
             </div>
-          )}
-        </div>
-      )}
-
-      {/* APPLICANT VIEW: Application Status or Admission Form */}
-      {!isStaff && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Status Tracker Card (if application exists) */}
-          <div className="lg:col-span-1 space-y-4">
-            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs space-y-4">
-              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <FileText className="w-4 h-4 text-emerald-800" /> Application Status
-              </h2>
-
-              {myApp ? (
-                <div className="space-y-4">
-                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Reference:</span>
-                      <span className="font-mono font-bold text-emerald-900">{myApp.applicationNumber}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Applicant:</span>
-                      <span className="font-semibold uppercase">{myApp.firstName} {myApp.lastName}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Programme:</span>
-                      <span className="font-semibold text-right">
-                        {programmes.find((p) => p.id === myApp.programmeId)?.name || 'Agricultural Technology'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center pt-2 border-t border-slate-200">
-                      <span className="text-slate-500 font-semibold">Status:</span>
-                      <span
-                        className={`px-2.5 py-0.5 font-bold rounded-full text-[11px] ${
-                          myApp.status === 'OFFERED'
-                            ? 'bg-amber-100 text-amber-800'
-                            : myApp.status === 'ACCEPTED'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : myApp.status === 'REJECTED'
-                            ? 'bg-red-100 text-red-800'
-                            : 'bg-blue-100 text-blue-800'
-                        }`}
-                      >
-                        {myApp.status}
-                      </span>
-                    </div>
-                  </div>
-
-                  {myApp.status === 'OFFERED' && (
-                    <div className="p-4 bg-emerald-50 border border-emerald-300 rounded-xl space-y-3">
-                      <div className="flex items-center gap-2 text-emerald-900 font-bold text-sm">
-                        <Award className="w-5 h-5 text-amber-600" /> Provisional Offer Ready!
-                      </div>
-                      <p className="text-xs text-slate-600 leading-relaxed">
-                        You have been officially offered admission into EDOCASTI. Accept the offer below to proceed to matriculation and student profile activation.
-                      </p>
-
-                      <div className="flex flex-col gap-2 pt-1">
-                        <button
-                          onClick={() => onOpenPrintModal('ADMISSION_LETTER', myApp)}
-                          className="w-full py-2 bg-white hover:bg-slate-50 text-emerald-800 font-bold text-xs rounded-lg border border-emerald-300 flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          <Printer className="w-4 h-4" /> View / Print Offer Letter
-                        </button>
-
-                        <button
-                          onClick={() => handleAcceptOffer(myApp.id)}
-                          className="w-full py-2 bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
-                        >
-                          <CheckCircle className="w-4 h-4" /> Accept Admission Offer Now
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {myApp.status === 'ACCEPTED' && (
-                    <div className="p-4 bg-emerald-100 border border-emerald-300 rounded-xl space-y-2 text-xs text-emerald-900">
-                      <div className="font-bold flex items-center gap-1">
-                        <CheckCircle className="w-4 h-4" /> Admission Offer Accepted
-                      </div>
-                      <p>Your student profile is active. You can now access course registration and fee settlement.</p>
-                      <button
-                        onClick={onGoToStudentWorkspace}
-                        className="w-full py-2 bg-emerald-800 text-white font-semibold rounded-lg mt-2 cursor-pointer"
-                      >
-                        Go to Student Workspace →
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="text-center py-6 text-xs text-slate-500 space-y-3">
-                  <p>You have not submitted an admission application yet for the {settings?.currentSession || '2025/2026'} academic session.</p>
-                  <p className="text-slate-400">Fill in the form on the right to apply.</p>
+            <div>
+              <label className='block text-slate-600 font-semibold mb-1'>Phone</label>
+              <input
+                type='text'
+                required
+                value={formData.phone}
+                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                className='w-full p-2 border border-slate-300 rounded-lg text-xs'
+              />
+            </div>
+            <div>
+              <label className='block text-slate-600 font-semibold mb-1'>Passport Photograph (for Student ID)</label>
+              <input
+                type='file'
+                accept='image/*'
+                onChange={handlePhotoUpload}
+                disabled={uploadingPhoto}
+                className='w-full p-2 border border-slate-300 rounded-lg text-xs file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:bg-emerald-800 file:text-white file:font-semibold file:cursor-pointer'
+              />
+              {uploadingPhoto && <p className='mt-1 text-xs text-slate-500'>Uploading photo…</p>}
+              {photoError && <p className='mt-1 text-xs text-red-600'>{photoError}</p>}
+              {profileImageUrl && (
+                <div className='mt-2 flex items-center gap-2'>
+                  <img src={profileImageUrl} alt='Preview' className='w-16 h-16 rounded-lg object-cover border border-slate-300' />
+                  <button
+                    type='button'
+                    onClick={() => setProfileImageUrl('')}
+                    className='text-xs text-red-600 font-semibold'
+                  >
+                    Remove
+                  </button>
                 </div>
               )}
             </div>
-
-            <div className="bg-amber-50 rounded-2xl p-4 border border-amber-200 text-xs text-amber-900 space-y-2">
-              <span className="font-bold uppercase tracking-wider block">Admissions Helpdesk</span>
-              <p>For inquiries regarding O-Level subject combinations, contact the admissions office at <strong>admissions@edocasti.edu.ng</strong>.</p>
+            <div>
+              <label className='block text-slate-600 font-semibold mb-1'>Programme</label>
+              <select
+                required
+                value={formData.programmeId}
+                onChange={(e) => setFormData({ ...formData, programmeId: e.target.value })}
+                className='w-full p-2 border border-slate-300 rounded-lg text-xs'
+              >
+                <option value=''>Select Programme</option>
+                {programmes.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
             </div>
-          </div>
 
-          {/* Admission Application Form */}
-          <div className="lg:col-span-2">
-            <div className="bg-white rounded-2xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-6">
-              <div>
-                <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider">
-                  Online Screening Form
-                </span>
-                <h2 className="text-xl font-bold text-slate-900 mt-0.5">
-                  National Diploma (ND) / HND Application
-                </h2>
-                <p className="text-xs text-slate-500 mt-1">
-                  Ensure all supplied biodata and O-Level examination results are accurate according to your WAEC/NECO certificates.
-                </p>
+            <div className='border-t border-slate-200 pt-4'>
+              <h3 className='text-sm font-bold text-slate-800 mb-3'>O-Level Examination Records</h3>
+              <div className='grid grid-cols-2 gap-4 mb-3'>
+                <div>
+                  <label className='block text-slate-600 font-semibold mb-1'>Examination Body</label>
+                  <select
+                    value={examType}
+                    onChange={(e) => setExamType(e.target.value)}
+                    className='w-full p-2 border border-slate-300 rounded-lg text-xs'
+                  >
+                    <option value=''>Select Examination Body</option>
+                    <option value='WAEC'>WAEC (SSCE)</option>
+                    <option value='NECO'>NECO (SSCE)</option>
+                    <option value='NABTEB'>NABTEB</option>
+                  </select>
+                </div>
+                <div>
+                  <label className='block text-slate-600 font-semibold mb-1'>Candidate Exam Number</label>
+                  <input
+                    type='text'
+                    value={examNumber}
+                    onChange={(e) => setExamNumber(e.target.value)}
+                    placeholder='e.g. 4201992011'
+                    className='w-full p-2 border border-slate-300 rounded-lg text-xs font-mono'
+                  />
+                </div>
               </div>
 
-              <form onSubmit={handleSubmitApplication} className="space-y-6 text-xs">
-                {/* Step 1: Biodata */}
-                <div className="space-y-3 border-b border-slate-100 pb-5">
-                  <h3 className="font-bold text-slate-800 uppercase tracking-wider text-[11px] text-emerald-800">
-                    1. Applicant Personal Information
-                  </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-slate-600 font-semibold mb-1">First Name</label>
-                      <input
-                        type="text"
-                        required
-                        value={formData.firstName}
-                        onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                        className="w-full p-2.5 border border-slate-300 rounded-lg text-xs"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-slate-600 font-semibold mb-1">Last Name / Surname</label>
-                      <input
-                        type="text"
-                        required
-                        value={formData.lastName}
-                        onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                        className="w-full p-2.5 border border-slate-300 rounded-lg text-xs"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-slate-600 font-semibold mb-1">Gender</label>
-                      <select
-                        value={formData.gender}
-                        onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
-                        className="w-full p-2.5 border border-slate-300 rounded-lg text-xs"
-                      >
-                        <option value="Male">Male</option>
-                        <option value="Female">Female</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-slate-600 font-semibold mb-1">Date of Birth</label>
-                      <input
-                        type="date"
-                        required
-                        value={formData.dob}
-                        onChange={(e) => setFormData({ ...formData, dob: e.target.value })}
-                        className="w-full p-2.5 border border-slate-300 rounded-lg text-xs"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-slate-600 font-semibold mb-1">State of Origin</label>
-                      <input
-                        type="text"
-                        required
-                        value={formData.stateOfOrigin}
-                        onChange={(e) => setFormData({ ...formData, stateOfOrigin: e.target.value })}
-                        className="w-full p-2.5 border border-slate-300 rounded-lg text-xs"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-slate-600 font-semibold mb-1">LGA of Origin</label>
-                      <input
-                        type="text"
-                        required
-                        value={formData.lga}
-                        onChange={(e) => setFormData({ ...formData, lga: e.target.value })}
-                        className="w-full p-2.5 border border-slate-300 rounded-lg text-xs"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Step 2: Programme Choice */}
-                <div className="space-y-3 border-b border-slate-100 pb-5">
-                  <h3 className="font-bold text-slate-800 uppercase tracking-wider text-[11px] text-emerald-800">
-                    2. Programme of Choice
-                  </h3>
-                  <div>
-                    <label className="block text-slate-600 font-semibold mb-1">Select Academic Programme</label>
+              <div className='space-y-2'>
+                {oLevelResults.map((result, index) => (
+                  <div key={index} className='flex gap-2 items-center'>
                     <select
-                      value={formData.programmeId}
-                      onChange={(e) => setFormData({ ...formData, programmeId: e.target.value })}
-                      className="w-full p-2.5 border border-slate-300 rounded-lg text-xs bg-white"
+                      value={result.subject}
+                      onChange={(e) => updateSubject(index, 'subject', e.target.value)}
+                      className='flex-1 p-2 border border-slate-300 rounded-lg text-xs'
                     >
-                      {programmes.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} ({p.qualification} - {p.durationYears} Years)
-                        </option>
+                      <option value=''>Select Subject</option>
+                      {SUBJECT_OPTIONS.map(s => (
+                        <option key={s} value={s}>{s}</option>
                       ))}
                     </select>
+                    <select
+                      value={result.grade}
+                      onChange={(e) => updateSubject(index, 'grade', e.target.value)}
+                      className='w-24 p-2 border border-slate-300 rounded-lg text-xs font-bold font-mono'
+                    >
+                      <option value=''>Grade</option>
+                      {GRADE_OPTIONS.map(g => (
+                        <option key={g} value={g}>{g}</option>
+                      ))}
+                    </select>
+                    {oLevelResults.length > 5 && (
+                      <button
+                        type='button'
+                        onClick={() => removeSubjectRow(index)}
+                        className='text-red-600 hover:text-red-800'
+                      >
+                        <Trash2 className='w-4 h-4' />
+                      </button>
+                    )}
                   </div>
-                </div>
+                ))}
+              </div>
 
-                {/* Step 3: O-Level Examination Grades */}
-                <div className="space-y-3 border-b border-slate-100 pb-5">
-                  <h3 className="font-bold text-slate-800 uppercase tracking-wider text-[11px] text-emerald-800">
-                    3. O-Level Examination Records (WAEC / NECO / NABTEB)
-                  </h3>
-
-                  <div className="grid grid-cols-2 gap-3 mb-3">
-                    <div>
-                      <label className="block text-slate-600 font-semibold mb-1">Examination Body</label>
-                      <select
-                        value={formData.examType}
-                        onChange={(e) => setFormData({ ...formData, examType: e.target.value })}
-                        className="w-full p-2.5 border border-slate-300 rounded-lg text-xs"
-                      >
-                        <option value="WAEC">WAEC (SSCE)</option>
-                        <option value="NECO">NECO (SSCE)</option>
-                        <option value="NABTEB">NABTEB</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-slate-600 font-semibold mb-1">Candidate Exam Number</label>
-                      <input
-                        type="text"
-                        required
-                        value={formData.examNumber}
-                        onChange={(e) => setFormData({ ...formData, examNumber: e.target.value })}
-                        placeholder="e.g. 4201992011"
-                        className="w-full p-2.5 border border-slate-300 rounded-lg text-xs font-mono"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-200">
-                    <div className="grid grid-cols-3 gap-2 font-semibold text-slate-600 pb-1">
-                      <span className="col-span-2">Subject Name</span>
-                      <span>Grade Attained</span>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2 items-center">
-                      <input
-                        type="text"
-                        value={formData.oLevel1Subject}
-                        readOnly
-                        className="col-span-2 p-2 bg-white border border-slate-200 rounded text-xs"
-                      />
-                      <select
-                        value={formData.oLevel1Grade}
-                        onChange={(e) => setFormData({ ...formData, oLevel1Grade: e.target.value })}
-                        className="p-2 bg-white border border-slate-300 rounded text-xs font-bold font-mono"
-                      >
-                        {['A1', 'B2', 'B3', 'C4', 'C5', 'C6', 'D7', 'E8', 'F9'].map((g) => (
-                          <option key={g} value={g}>{g}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2 items-center">
-                      <input
-                        type="text"
-                        value={formData.oLevel2Subject}
-                        readOnly
-                        className="col-span-2 p-2 bg-white border border-slate-200 rounded text-xs"
-                      />
-                      <select
-                        value={formData.oLevel2Grade}
-                        onChange={(e) => setFormData({ ...formData, oLevel2Grade: e.target.value })}
-                        className="p-2 bg-white border border-slate-300 rounded text-xs font-bold font-mono"
-                      >
-                        {['A1', 'B2', 'B3', 'C4', 'C5', 'C6', 'D7', 'E8', 'F9'].map((g) => (
-                          <option key={g} value={g}>{g}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2 items-center">
-                      <input
-                        type="text"
-                        value={formData.oLevel3Subject}
-                        onChange={(e) => setFormData({ ...formData, oLevel3Subject: e.target.value })}
-                        className="col-span-2 p-2 bg-white border border-slate-300 rounded text-xs"
-                      />
-                      <select
-                        value={formData.oLevel3Grade}
-                        onChange={(e) => setFormData({ ...formData, oLevel3Grade: e.target.value })}
-                        className="p-2 bg-white border border-slate-300 rounded text-xs font-bold font-mono"
-                      >
-                        {['A1', 'B2', 'B3', 'C4', 'C5', 'C6', 'D7', 'E8', 'F9'].map((g) => (
-                          <option key={g} value={g}>{g}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2 items-center">
-                      <input
-                        type="text"
-                        value={formData.oLevel4Subject}
-                        onChange={(e) => setFormData({ ...formData, oLevel4Subject: e.target.value })}
-                        className="col-span-2 p-2 bg-white border border-slate-300 rounded text-xs"
-                      />
-                      <select
-                        value={formData.oLevel4Grade}
-                        onChange={(e) => setFormData({ ...formData, oLevel4Grade: e.target.value })}
-                        className="p-2 bg-white border border-slate-300 rounded text-xs font-bold font-mono"
-                      >
-                        {['A1', 'B2', 'B3', 'C4', 'C5', 'C6', 'D7', 'E8', 'F9'].map((g) => (
-                          <option key={g} value={g}>{g}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2 items-center">
-                      <input
-                        type="text"
-                        value={formData.oLevel5Subject}
-                        onChange={(e) => setFormData({ ...formData, oLevel5Subject: e.target.value })}
-                        className="col-span-2 p-2 bg-white border border-slate-300 rounded text-xs"
-                      />
-                      <select
-                        value={formData.oLevel5Grade}
-                        onChange={(e) => setFormData({ ...formData, oLevel5Grade: e.target.value })}
-                        className="p-2 bg-white border border-slate-300 rounded text-xs font-bold font-mono"
-                      >
-                        {['A1', 'B2', 'B3', 'C4', 'C5', 'C6', 'D7', 'E8', 'F9'].map((g) => (
-                          <option key={g} value={g}>{g}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="pt-2">
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full py-3 bg-emerald-800 hover:bg-emerald-900 text-white font-bold rounded-xl text-sm transition flex items-center justify-center gap-2 cursor-pointer shadow-md"
-                  >
-                    <Send className="w-4 h-4" />
-                    {myApp ? 'Update & Re-Submit Application' : 'Submit Admission Application Online'}
-                  </button>
-                </div>
-              </form>
+              <button
+                type='button'
+                onClick={addSubjectRow}
+                className='mt-3 text-xs text-emerald-700 font-semibold flex items-center gap-1'
+              >
+                <Plus className='w-3 h-3' /> Add Another Subject
+              </button>
             </div>
+
+            <button
+              type='submit'
+              disabled={loading}
+              className='w-full py-2 bg-emerald-800 hover:bg-emerald-900 text-white font-bold rounded-lg cursor-pointer'
+            >
+              {loading ? 'Submitting...' : 'Submit Application'}
+            </button>
+          </form>
+          {successMsg && <p className='mt-3 text-xs text-center text-emerald-700'>{successMsg}</p>}
+          {errorMsg && <p className='mt-3 text-xs text-center text-red-700'>{errorMsg}</p>}
+        </div>
+      </div>
+    );
+  }
+
+  // Logged in as Applicant with an application → Show status
+  if (isApplicant && myApp) {
+    return (
+      <div className='p-6 bg-gray-50 min-h-screen'>
+        <div className='max-w-2xl mx-auto bg-white rounded-2xl border border-slate-200 p-6 shadow-xs'>
+          <h2 className='text-lg font-bold text-slate-900 mb-4'>Your Application Status</h2>
+          {successMsg && (
+            <div role='status' className='mb-4 p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-sm text-emerald-900'>
+              {successMsg}
+            </div>
+          )}
+          {errorMsg && (
+            <div role='alert' className='mb-4 p-3 bg-red-50 border border-red-300 rounded-xl text-sm text-red-900'>
+              {errorMsg}
+            </div>
+          )}
+          <div className='p-4 bg-emerald-50 border border-emerald-200 rounded-lg'>
+            <p className='text-sm font-semibold text-emerald-800'>Application Number: {myApp.applicationNumber}</p>
+            <p className='text-xs text-emerald-600 mt-1'>Status: {myApp.status}</p>
+            <p className='text-xs text-emerald-600'>Session: {myApp.session}</p>
+          </div>
+          {myApp.status === 'OFFERED' && (
+            <div className='mt-4 p-4 bg-emerald-50 border border-emerald-300 rounded-xl space-y-3'>
+              <div className='flex items-center gap-2 text-emerald-900 font-bold text-sm'>
+                <Award className='w-5 h-5 text-amber-600' /> Provisional Offer Ready!
+              </div>
+              <p className='text-xs text-slate-600 leading-relaxed'>
+                You have been officially offered admission into EDOCASTI. Accept the offer below to proceed to matriculation and student profile activation.
+              </p>
+              <div className='flex flex-col gap-2 pt-1'>
+                <button
+                  onClick={() => onOpenPrintModal('ADMISSION_LETTER', myApp)}
+                  className='w-full py-2 bg-white hover:bg-slate-50 text-emerald-800 font-bold text-xs rounded-lg border border-emerald-300 flex items-center justify-center gap-1.5 cursor-pointer'
+                >
+                  <Printer className='w-4 h-4' /> View / Print Offer Letter
+                </button>
+                <button
+                  type='button'
+                  onClick={() => handleAcceptOffer(String(myApp.id || ''))}
+                  disabled={acceptingOffer}
+                  aria-busy={acceptingOffer}
+                  className='w-full py-2 bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed'
+                >
+                  {acceptingOffer ? (
+                    <><Clock className='w-4 h-4 animate-spin' /> Processing...</>
+                  ) : (
+                    <><CheckCircle className='w-4 h-4' /> Accept Admission Offer Now</>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+          {myApp.status === 'ACCEPTED' && (
+            <div className='mt-4 p-4 bg-emerald-100 border border-emerald-300 rounded-xl space-y-2 text-xs text-emerald-900'>
+              <div className='font-bold flex items-center gap-1'>
+                <CheckCircle className='w-4 h-4' /> Admission Offer Accepted
+              </div>
+              <p>Your student profile is active. You can now access course registration and fee settlement.</p>
+              <div className='flex flex-col gap-2 pt-1'>
+                <button
+                  onClick={() => onOpenPrintModal('ADMISSION_LETTER', myApp)}
+                  className='w-full py-2 bg-white hover:bg-slate-50 text-emerald-800 font-bold text-xs rounded-lg border border-emerald-300 flex items-center justify-center gap-1.5 cursor-pointer'
+                >
+                  <Printer className='w-4 h-4' /> View / Print Admission Letter
+                </button>
+                <button
+                  onClick={onGoToStudentWorkspace}
+                  className='w-full py-2 bg-emerald-800 text-white font-semibold rounded-lg cursor-pointer'
+                >
+                  Go to Student Workspace →
+                </button>
+              </div>
+            </div>
+          )}
+          {myApp.status === 'UNDER_REVIEW' && (
+            <div className='mt-4 p-4 bg-blue-50 border border-blue-300 rounded-xl space-y-2 text-xs text-blue-900'>
+              <div className='font-bold flex items-center gap-1'>
+                <Clock className='w-4 h-4' /> Application Under Review
+              </div>
+              <p>Your application is currently being reviewed by the admissions committee. You will be notified once a decision is made.</p>
+            </div>
+          )}
+          {myApp.status === 'REJECTED' && (
+            <div className='mt-4 p-4 bg-red-50 border border-red-300 rounded-xl space-y-2 text-xs text-red-900'>
+              <div className='font-bold flex items-center gap-1'>
+                <XCircle className='w-4 h-4' /> Application Not Successful
+              </div>
+              <p>Unfortunately, your application was not successful in this admission cycle. Please contact the admissions office for further guidance.</p>
+            </div>
+          )}
+          {myApp.status !== 'OFFERED' && myApp.status !== 'ACCEPTED' && myApp.status !== 'UNDER_REVIEW' && myApp.status !== 'REJECTED' && (
+            <div className='mt-4 p-4 bg-slate-50 border border-slate-300 rounded-xl space-y-2 text-xs text-slate-700'>
+              <div className='font-bold flex items-center gap-1'>
+                <Info className='w-4 h-4' /> Application Submitted
+              </div>
+              <p>Your application has been received. Please wait while it is being processed. Check back later for an update on your status.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Staff → Show admissions registry with full table
+  if (isStaff) {
+    return (
+      <div className='p-6 bg-gray-50 min-h-screen'>
+        <div className='max-w-6xl mx-auto'>
+          <div className='mb-6'>
+            <p className='text-sm text-green-700 font-semibold'>ADMISSIONS REGISTRY</p>
+            <h1 className='text-2xl font-bold text-gray-900'>Admissions Committee Screening Portal</h1>
+            <p className='text-gray-600'>Official National Diploma (ND) and Higher National Diploma (HND) application processing.</p>
+          </div>
+
+          {successMsg && (
+            <div className='mb-4 p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-xs text-emerald-900 flex items-center justify-between'>
+              <span>{successMsg}</span>
+              <button onClick={() => setSuccessMsg(null)} className='font-bold text-emerald-700'>✕</button>
+            </div>
+          )}
+
+          {errorMsg && (
+            <div className='mb-4 p-3 bg-red-50 border border-red-300 rounded-xl text-xs text-red-900 flex items-center justify-between'>
+              <span>{errorMsg}</span>
+              <button onClick={() => setErrorMsg(null)} className='font-bold text-red-700'>✕</button>
+            </div>
+          )}
+
+          <div className='bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4'>
+            <div className='flex items-center justify-between'>
+              <div>
+                <h2 className='text-base font-bold text-slate-900'>Submitted Applicant Register</h2>
+                <p className='text-xs text-slate-500'>Screen credentials, inspect O-Level grades, and record admission decisions.</p>
+              </div>
+              <span className='px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-bold rounded-lg'>
+                Total Applicants: {allApps.length}
+              </span>
+            </div>
+
+            <div className='overflow-x-auto border border-slate-200 rounded-xl'>
+              <table className='w-full text-xs text-left'>
+                <thead className='bg-slate-100 text-slate-700 uppercase font-bold text-[11px]'>
+                  <tr>
+                    <th className='p-3'>Ref Number</th>
+                    <th className='p-3'>Applicant Name</th>
+                    <th className='p-3'>Programme</th>
+                    <th className='p-3'>O-Level Highlights</th>
+                    <th className='p-3'>Status</th>
+                    <th className='p-3 text-right'>Actions</th>
+                  </tr>
+                </thead>
+                <tbody className='divide-y divide-slate-200'>
+                  {allApps.map((app) => (
+                    <tr key={app.id} className='hover:bg-slate-50'>
+                      <td className='p-3 font-mono font-bold text-emerald-900'>{app.applicationNumber}</td>
+                      <td className='p-3 font-semibold text-slate-900 uppercase'>
+                        {app.firstName} {app.lastName}
+                      </td>
+                      <td className='p-3 text-slate-700'>
+                        {programmes.find((p) => p.id === app.programmeId)?.name || 'Programme'}
+                      </td>
+                      <td className='p-3'>
+                        <span className='text-[11px] bg-slate-100 px-2 py-0.5 rounded text-slate-700 font-mono'>
+                          {app.oLevelResults?.length || 5} Subjects Verified
+                        </span>
+                      </td>
+                      <td className='p-3'>
+                        <span
+                          className={`px-2.5 py-1 text-[11px] font-bold rounded-full ${
+                            app.status === 'OFFERED'
+                              ? 'bg-amber-100 text-amber-800'
+                              : app.status === 'ACCEPTED'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : app.status === 'REJECTED'
+                              ? 'bg-red-100 text-red-800'
+                              : 'bg-blue-100 text-blue-800'
+                          }`}
+                        >
+                          {app.status}
+                        </span>
+                      </td>
+                      <td className='p-3 text-right space-x-2'>
+                        <button
+                          onClick={() => {
+                            setSelectedApp(app);
+                            setDecisionStatus(app.status === 'REJECTED' ? 'REJECTED' : 'OFFERED');
+                            setScreeningNotes(app.screeningNotes || '');
+                          }}
+                          className='px-2.5 py-1 bg-emerald-800 hover:bg-emerald-900 text-white font-semibold rounded cursor-pointer text-xs'
+                        >
+                          Screen & Decide
+                        </button>
+                        <button
+                          onClick={() => onOpenPrintModal('ADMISSION_LETTER', app)}
+                          className='px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded cursor-pointer text-xs'
+                        >
+                          Letter
+                        </button>
+                        
+                        {/* SUPER ADMIN EDIT / DELETE BUTTONS */}
+                        {isSuperAdmin && (
+                          <>
+                            <button
+                              onClick={() => setEditingApp(app)}
+                              className='px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded cursor-pointer text-xs'
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleDeleteApp(app)}
+                              disabled={deletingId === app.id}
+                              className='px-2.5 py-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-semibold rounded cursor-pointer text-xs'
+                            >
+                              {deletingId === app.id ? 'Deleting…' : 'Delete'}
+                            </button>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {selectedApp && (
+              <div className='fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4'>
+                <div className='bg-white rounded-2xl max-w-xl w-full p-6 space-y-4 border border-slate-200 shadow-2xl'>
+                  <div className='flex justify-between items-start border-b border-slate-100 pb-3'>
+                    <div>
+                      <h3 className='font-bold text-slate-900 text-base'>
+                        Screening Application: {selectedApp.applicationNumber}
+                      </h3>
+                      <p className='text-xs text-slate-500 uppercase'>
+                        {selectedApp.firstName} {selectedApp.lastName}
+                      </p>
+                    </div>
+                    <button onClick={() => setSelectedApp(null)} className='text-slate-400 hover:text-slate-700'>✕</button>
+                  </div>
+
+                  <div className='space-y-3'>
+                    <div>
+                      <span className='text-xs font-bold text-slate-700 uppercase block mb-1'>
+                        Submitted O-Level Results:
+                      </span>
+                      <div className='bg-slate-50 p-3 rounded-lg border border-slate-200 max-h-60 overflow-y-auto'>
+                        <div className='space-y-2'>
+                          {selectedApp.oLevelResults?.map((r: any, i: number) => (
+                            <div key={i} className='flex justify-between items-center border-b border-slate-200 pb-2 last:border-0'>
+                              <span className='text-slate-700 font-medium'>{r.subject}</span>
+                              <span className='font-bold font-mono text-emerald-800 bg-white px-2 py-0.5 rounded border border-slate-200'>
+                                {r.grade}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                        {(!selectedApp.oLevelResults || selectedApp.oLevelResults.length === 0) && (
+                          <p className='text-xs text-slate-500'>No O-Level results submitted.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className='text-xs font-bold text-slate-700 uppercase block mb-1'>
+                        Admission Decision
+                      </label>
+                      <select
+                        value={decisionStatus}
+                        onChange={(e: any) => setDecisionStatus(e.target.value)}
+                        className='w-full text-xs p-2 border border-slate-300 rounded-lg'
+                      >
+                        <option value='OFFERED'>Grant Provisional Offer of Admission (OFFERED)</option>
+                        <option value='UNDER_REVIEW'>Place Under Review (UNDER_REVIEW)</option>
+                        <option value='REJECTED'>Decline Application (REJECTED)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className='text-xs font-bold text-slate-700 uppercase block mb-1'>
+                        Screening Notes & Comments
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={screeningNotes}
+                        onChange={(e) => setScreeningNotes(e.target.value)}
+                        placeholder='Add official screening comments...'
+                        className='w-full text-xs p-2 border border-slate-300 rounded-lg'
+                      />
+                    </div>
+                  </div>
+
+                  <div className='flex justify-end gap-2 pt-3 border-t border-slate-100'>
+                    <button
+                      onClick={() => setSelectedApp(null)}
+                      className='px-4 py-2 text-xs bg-slate-100 text-slate-700 rounded-lg font-semibold cursor-pointer'
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => handleDecisionSubmit(selectedApp.id)}
+                      className='px-4 py-2 text-xs bg-emerald-800 hover:bg-emerald-900 text-white font-semibold rounded-lg cursor-pointer'
+                    >
+                      Confirm & Publish Decision
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* EDIT MODAL */}
+            {editingApp && (
+              <div className='fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4'>
+                <form onSubmit={handleEditSave} className='bg-white rounded-2xl max-w-xl w-full p-6 space-y-4 border border-slate-200 shadow-2xl'>
+                  <div className='flex justify-between items-start border-b border-slate-100 pb-3'>
+                    <div>
+                      <h3 className='font-bold text-slate-900 text-base'>Edit Application</h3>
+                      <p className='text-xs text-slate-500 uppercase'>{editingApp.applicationNumber}</p>
+                    </div>
+                    <button type='button' onClick={() => setEditingApp(null)} className='text-slate-400 hover:text-slate-700'>✕</button>
+                  </div>
+
+                  <div className='grid grid-cols-2 gap-3'>
+                    <div>
+                      <label className='text-xs font-bold text-slate-700 block mb-1'>First Name</label>
+                      <input name='firstName' defaultValue={editingApp.firstName ?? ''} className='w-full text-xs p-2 border border-slate-300 rounded-lg' />
+                    </div>
+                    <div>
+                      <label className='text-xs font-bold text-slate-700 block mb-1'>Last Name</label>
+                      <input name='lastName' defaultValue={editingApp.lastName ?? ''} className='w-full text-xs p-2 border border-slate-300 rounded-lg' />
+                    </div>
+                    <div>
+                      <label className='text-xs font-bold text-slate-700 block mb-1'>Phone</label>
+                      <input name='phone' defaultValue={editingApp.phone ?? ''} className='w-full text-xs p-2 border border-slate-300 rounded-lg' />
+                    </div>
+                    <div>
+                      <label className='text-xs font-bold text-slate-700 block mb-1'>Status</label>
+                      <select name='status' defaultValue={editingApp.status ?? 'SUBMITTED'} className='w-full text-xs p-2 border border-slate-300 rounded-lg'>
+                        <option value='SUBMITTED'>SUBMITTED</option>
+                        <option value='UNDER_REVIEW'>UNDER_REVIEW</option>
+                        <option value='OFFERED'>OFFERED</option>
+                        <option value='REJECTED'>REJECTED</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className='flex justify-end gap-2 pt-3 border-t border-slate-100'>
+                    <button type='button' onClick={() => setEditingApp(null)} className='px-4 py-2 text-xs bg-slate-100 text-slate-700 rounded-lg font-semibold cursor-pointer'>Cancel</button>
+                    <button type='submit' disabled={savingEdit} className='px-4 py-2 text-xs bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg cursor-pointer disabled:opacity-50'>
+                      {savingEdit ? 'Saving…' : 'Save Changes'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
           </div>
         </div>
-      )}
+      </div>
+    );
+  }
+
+  return (
+    <div className='p-6 bg-gray-50 min-h-screen'>
+      <div className='max-w-6xl mx-auto'>
+        <h1 className='text-2xl font-bold text-gray-900'>Admissions Portal</h1>
+        <p className='text-gray-600'>Welcome to the EDOCASTI Admissions Portal.</p>
+      </div>
     </div>
   );
 };

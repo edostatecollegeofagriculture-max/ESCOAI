@@ -91,7 +91,7 @@ def upload_file():
 
     folder = re.sub(r"[^a-zA-Z0-9_-]+", "-", request.form.get("folder", "general")).strip("-_")[:40] or "general"
     is_image = extension in IMAGE_EXTENSIONS
-    if is_image and actor.get("role") not in STAFF_UPLOAD_ROLES:
+    if is_image and actor.get("role") not in STAFF_UPLOAD_ROLES and actor.get("category") not in ("APPLICANT", "STUDENT"):
         return jsonify(success=False, message="Only authorized staff can publish images."), 403
     if not is_image and actor.get("role") not in STAFF_UPLOAD_ROLES | {"APPLICANT", "STUDENT"}:
         return jsonify(success=False, message="Your role cannot upload documents."), 403

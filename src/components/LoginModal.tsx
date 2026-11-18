@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { LogIn, UserPlus, AlertCircle } from 'lucide-react';
 
@@ -8,7 +8,7 @@ interface Props {
 }
 
 export const LoginModal: React.FC<Props> = ({ isOpen, onClose }) => {
-  const { login, registerApplicant } = useAuth();
+  const { login, registerApplicant, devQuickLogin } = useAuth();
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -33,6 +33,20 @@ export const LoginModal: React.FC<Props> = ({ isOpen, onClose }) => {
       onClose();
     } catch (err: any) {
       setError(err.message || 'Authentication failed. Please verify credentials.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDevQuickLogin = async (role: 'SUPER_ADMIN' | 'ADMIN' | 'USER' | 'INSTITUTION_ADMIN' | 'RECTOR' | 'REGISTRAR' | 'ADMISSIONS_OFFICER' | 'DEAN' | 'HOD' | 'LECTURER' | 'EXAM_OFFICER' | 'BURSAR' | 'CONTENT_EDITOR' | 'ICT_ADMIN' | 'SUPPORT_OFFICER' | 'STUDENT' | 'APPLICANT') => {
+    setError(null);
+    setLoading(true);
+
+    try {
+      await devQuickLogin(role);
+      onClose();
+    } catch (err: any) {
+      setError(err.message || 'Development quick login failed.');
     } finally {
       setLoading(false);
     }
@@ -150,6 +164,54 @@ export const LoginModal: React.FC<Props> = ({ isOpen, onClose }) => {
           </button>
 
 
+          {import.meta.env.DEV && !isRegistering && (
+            <div className="border-t border-dashed border-amber-300 dark:border-amber-800 pt-4 space-y-2">
+              <p className="text-center text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">
+                Development Testing Only
+              </p>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => handleDevQuickLogin('SUPER_ADMIN')}
+                  className="py-2 px-1 text-xs font-semibold rounded-lg bg-purple-700 hover:bg-purple-800 text-white disabled:opacity-50"
+                >
+                  Super Admin
+                </button>
+                {[
+                  ['RECTOR', 'Rector'],
+                  ['EXAM_OFFICER', 'Exam Officer'],
+                  ['STUDENT', 'Student'],
+                  ['APPLICANT', 'Applicant'],
+                  ['DEAN', 'Dean'],
+                  ['HOD', 'HOD'],
+                  ['LECTURER', 'Lecturer'],
+                  ['REGISTRAR', 'Registrar'],
+                  ['BURSAR', 'Bursar'],
+                ].map(([category, label]) => (
+                  <button
+                    key={category}
+                    type="button"
+                    disabled={loading}
+                    onClick={() => handleDevQuickLogin(category as
+                      'RECTOR' | 'EXAM_OFFICER' | 'STUDENT' | 'APPLICANT' |
+                      'DEAN' | 'HOD' | 'LECTURER' | 'REGISTRAR' | 'BURSAR')}
+                    className="py-2 px-1 text-xs font-semibold rounded-lg bg-slate-700 hover:bg-slate-800 text-white disabled:opacity-50"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {loading && (
+                <p className="text-center text-xs text-slate-500">
+                  Establishing development session...
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="text-center pt-2 text-xs">
             {isRegistering ? (
               <button
@@ -174,3 +236,4 @@ export const LoginModal: React.FC<Props> = ({ isOpen, onClose }) => {
     </div>
   );
 };
+
