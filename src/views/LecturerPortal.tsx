@@ -1,4 +1,5 @@
-﻿import React, { useState, useEffect } from 'react';
+﻿import { LecturerResultEntryTab } from '../components/LecturerResultEntryTab';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { Course, Student, AssessmentResult } from '../types';
@@ -36,7 +37,7 @@ export const LecturerPortal: React.FC = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const isLecturer = user?.category === 'LECTURER';
+      const isLecturer = user?.category === 'LECTURER' || user?.category === 'HOD';
 
       const crsRes = isLecturer
         ? await api.getLecturerCourses()
@@ -80,7 +81,7 @@ export const LecturerPortal: React.FC = () => {
 
   // Load the selected course roster and results.
   useEffect(() => {
-    const isLecturer = user?.category === 'LECTURER';
+    const isLecturer = user?.category === 'LECTURER' || user?.category === 'HOD';
 
     if (!selectedCourse) {
       if (isLecturer) {

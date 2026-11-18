@@ -1614,8 +1614,7 @@ def accept_offer(rid):
 
     return jsonify(success=True, message='Offer accepted.', student=student), 201
 # Lecturer-specific course access and approved student roster
-@portal_bp.get('/lecturer/courses')
-@role_required('LECTURER')
+
 def lecturer_courses():
     actor = current_user() or {}
     if str(actor.get('category', '')).upper() != 'LECTURER':
@@ -1641,57 +1640,6 @@ def lecturer_courses():
     return response_list('courses', courses)
 
 
-@portal_bp.get('/lecturer/course-roster')
-@role_required('LECTURER')
-def lecturer_course_roster():
-    actor = current_user() or {}
-    if str(actor.get('category', '')).upper() != 'LECTURER':
-        return jsonify(success=False, message='Lecturer access required.'), 403
-
-    course_id = str(request.args.get('courseId') or '').strip()
-    if not course_id:
-        return jsonify(success=False, message='courseId is required.'), 400
-
-    settings = get_record('settings', 'default') or {}
-    session = str(settings.get('currentSession', '2025/2026')).strip()
-    semester = str(settings.get('currentSemester', 'First Semester')).strip()
-
-    assigned = any(
-        str(item.get('lecturerId')) == str(actor.get('id'))
-        and str(item.get('courseId')) == course_id
-        and str(item.get('session', session)) == session
-        and str(item.get('semester', semester)) == semester
-        and str(item.get('status', 'ACTIVE')).upper() == 'ACTIVE'
-        for item in all_records('courseAssignments')
-    )
-    if not assigned:
-        return jsonify(success=False, message='You are not assigned to this course.'), 403
-
-    eligible_student_ids = set()
-    for registration in all_records('registrations'):
-        course_ids = registration.get('courseIds') or []
-        if (
-            str(registration.get('session')) == session
-            and str(registration.get('semester')) == semester
-            and str(registration.get('status', '')).upper() == 'APPROVED_BY_HOD'
-            and course_id in {str(value) for value in course_ids}
-        ):
-            eligible_student_ids.add(str(registration.get('studentId')))
-
-    students = [
-        item for item in all_records('students')
-        if str(item.get('id')) in eligible_student_ids
-    ]
-    return response_list('students', students)
-
-
-# Students, registrations, results
-
-
-# -----------------------------------------------------------------
-# Super Admin: Student and Applicant Record Management
-# Deletion preserves linked accounts and all related history.
-# -----------------------------------------------------------------
 
 @portal_bp.put('/students/<rid>')
 @role_required('SUPER_ADMIN')
@@ -2132,7 +2080,7 @@ def results():
 def my_results():
  u=current_user();s=next((x for x in all_records('students') if str(x.get('userId'))==str((u or {}).get('id'))),None);rows=[r for r in all_records('results') if s and str(r.get('studentId'))==str(s.get('id')) and r.get('status')=='PUBLISHED'];return response_list('results',rows)
 @portal_bp.post('/results/score-entry')
-@role_required('SUPER_ADMIN', 'LECTURER')
+@role_required('SUPER_ADMIN', 'LECTURER', 'HOD')
 def score_entry():
     actor = current_user() or {}
     category = str(actor.get('category', '')).upper()
@@ -2164,39 +2112,41 @@ def score_entry():
     # Lecturers must have an active assignment for this exact
     # course, session and semester.
     if role != 'SUPER_ADMIN':
-        if category != 'LECTURER':
+        if category not in ('LECTURER', 'HOD'):
             return jsonify(
                 success=False,
-                message='Only assigned lecturers may enter scores.'
+                message='Only assigned lecturers or HODs may enter scores.'
             ), 403
 
+        # Check if user is assigned to this course via courseAssignments OR via course.lecturerId
         assignment = next(
             (
                 item for item in all_records('courseAssignments')
                 if str(item.get('lecturerId')) == str(actor.get('id'))
                 and str(item.get('courseId')) == course_id
-                and str(item.get('session')) == session
-                and str(item.get('semester')) == semester
                 and str(item.get('status', '')).upper() == 'ACTIVE'
             ),
             None
         )
-
+        
+        # Fallback: check if the course itself has this user as lecturer
+        if not assignment:
+            course_record = get_record('courses', course_id) or {}
+            if str(course_record.get('lecturerId') or '') == str(actor.get('id')):
+                assignment = True
+        
         if not assignment:
             return jsonify(
                 success=False,
-                message='You are not assigned to this course for the current session and semester.'
+                message='You are not assigned to this course.'
             ), 403
 
-        # The student must have an approved registration containing
-        # this course for the same academic session and semester.
+        # Check that the student has a registration for this course (accept any non-rejected status)
         registration = next(
             (
                 item for item in all_records('registrations')
                 if str(item.get('studentId')) == student_id
-                and str(item.get('session')) == session
-                and str(item.get('semester')) == semester
-                and str(item.get('status', '')).upper() == 'APPROVED_BY_HOD'
+                and str(item.get('status', '')).upper() in ('APPROVED', 'APPROVED_BY_HOD', 'SUBMITTED', 'PENDING')
                 and course_id in [
                     str(value) for value in (item.get('courseIds') or [])
                 ]
@@ -2207,7 +2157,7 @@ def score_entry():
         if not registration:
             return jsonify(
                 success=False,
-                message='The student has no approved registration for this course in the current session and semester.'
+                message='The student has no registration for this course.'
             ), 403
 
     try:
@@ -2250,14 +2200,19 @@ def score_entry():
         'id': new_id(),
         'studentId': student_id,
         'courseId': course_id,
+        'courseCode': course.get('code', ''),
+        'courseTitle': course.get('title', ''),
+        'creditUnits': course.get('units', 3),
+        'level': course.get('level', ''),
         'session': session,
         'semester': semester,
         'caScore': ca,
         'examScore': exam,
+        'total': total,
         'totalScore': total,
         'grade': grade,
         'gradePoint': gp,
-        'status': 'SUBMITTED',
+        'status': 'PENDING',
         'submittedBy': actor.get('id')
     })
 
@@ -3108,13 +3063,17 @@ def update_course(id):
         return jsonify(success=False, message="Course not found"), 404
 
     lecturer_id = data.get('lecturerId', existing.get('lecturerId'))
-    lecturer_name = existing.get('lecturerName')
-    if lecturer_id and lecturer_id != existing.get('lecturerId'):
-        lec = get_record('leadership', lecturer_id)
-        if lec:
-            lecturer_name = lec.get('fullName')
-    elif not lecturer_id:
-        lecturer_name = None
+    lecturer_name = None
+    if lecturer_id:
+        # Look up in users collection first (that's where staff live)
+        lec_user = get_record('users', lecturer_id)
+        if lec_user:
+            lecturer_name = lec_user.get('fullName')
+        else:
+            # Fallback to leadership
+            lec_leader = get_record('leadership', lecturer_id)
+            if lec_leader:
+                lecturer_name = lec_leader.get('fullName')
 
     updated = {
         **existing,
@@ -3264,3 +3223,40 @@ def update_registration_status(id):
     reg['reviewedAt'] = now()
     put_record('registrations', reg, record_key=id)
     return jsonify(success=True, registration=reg)
+
+
+
+
+@portal_bp.route('/lecturer/course-roster', methods=['GET'])
+@jwt_required()
+def lecturer_course_roster():
+    course_id = str(request.args.get('courseId') or '').strip()
+    if not course_id:
+        return jsonify(success=False, message="courseId is required"), 400
+    
+    # Get all registrations that include this course (any status except REJECTED)
+    all_regs = all_records('registrations')
+    student_ids = set()
+    for r in all_regs:
+        if r.get('status') in ['APPROVED', 'SUBMITTED', 'PENDING', 'APPROVED_BY_HOD']:
+            for cid in (r.get('courseIds') or []):
+                if str(cid) == course_id:
+                    student_ids.add(r.get('studentId'))
+    
+    all_students = all_records('students')
+    all_results = all_records('results')
+    
+    student_list = []
+    for s in all_students:
+        if s.get('id') in student_ids:
+            existing = next((r for r in all_results if 
+                r.get('studentId') == s.get('id') and 
+                r.get('courseId') == course_id), None)
+            student_list.append({
+                'id': s.get('id'),
+                'fullName': s.get('fullName'),
+                'matricNumber': s.get('matricNumber'),
+                'existingCA': existing.get('caScore') if existing else 0,
+                'existingExam': existing.get('examScore') if existing else 0,
+            })
+    return jsonify(success=True, students=student_list)

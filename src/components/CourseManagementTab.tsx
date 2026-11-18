@@ -25,14 +25,23 @@ export const CourseManagementTab: React.FC = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [crsRes, deptRes, staffRes] = await Promise.all([
+      const [crsRes, deptRes, userRes] = await Promise.all([
         api.getCourses(),
         api.getDepartments(),
-        api.getLeadership(), // Assuming staff/lecturers are stored here
+        api.getUsers(),
       ]);
       if (crsRes.success) setCourses(crsRes.courses);
       if (deptRes.success) setDepartments(deptRes.departments);
-      if (staffRes.success) setLecturers(staffRes.leadership.filter((l: any) => l.role === 'LECTURER' || l.title?.toLowerCase().includes('lecturer')));
+      if (userRes.success) {
+        const potentialLecturers = (userRes.users || []).filter((u: any) => 
+          u.category === 'LECTURER' || 
+          u.category === 'HOD' || 
+          u.category === 'INSTITUTION_ADMIN' ||
+          u.role === 'LECTURER' || 
+          u.role === 'ADMIN'
+        );
+        setLecturers(potentialLecturers);
+      }
     } catch (e) {
       console.error(e);
     } finally {
