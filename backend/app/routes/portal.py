@@ -2075,10 +2075,79 @@ def results():
         success=False,
         message='Insufficient permissions.'
     ), 403
+
+
+@portal_bp.get('/registrations/me')
+@jwt_required()
+def get_my_registration():
+    # Find the student record for the current user
+    u = current_user() or {}
+    user_id = str(u.get('id') or '')
+    user_email = str(u.get('email') or '').lower()
+    
+    s = next(
+        (x for x in all_records('students') 
+         if str(x.get('userId')) == user_id 
+         or str(x.get('email') or '').lower() == user_email), 
+        None
+    )
+    
+    if not s:
+        # Return a safe empty response so the frontend doesn't crash
+        return jsonify(success=True, registration=None)
+        
+    student_id = str(s.get('id'))
+    settings = get_record('settings', 'default') or {}
+    session = str(settings.get('currentSession', '2025/2026'))
+    semester = str(settings.get('currentSemester', 'First Semester'))
+
+    # Find the latest registration for this student in the current session
+    regs = [
+        r for r in all_records('registrations')
+        if str(r.get('studentId')) == student_id
+        and str(r.get('session')) == session
+        and str(r.get('semester')) == semester
+    ]
+    
+    if not regs:
+        return jsonify(success=True, registration=None)
+        
+    # Return the most recently created one
+    regs.sort(key=lambda x: str(x.get('createdAt') or ''), reverse=True)
+    return jsonify(success=True, registration=regs[0])
+
+
 @portal_bp.get('/results/my-results')
 @jwt_required()
 def my_results():
- u=current_user();s=next((x for x in all_records('students') if str(x.get('userId'))==str((u or {}).get('id'))),None);rows=[r for r in all_records('results') if s and str(r.get('studentId'))==str(s.get('id')) and r.get('status')=='PUBLISHED'];return response_list('results',rows)
+    u = current_user() or {}
+    user_id = str(u.get('id') or '')
+    user_email = str(u.get('email') or '').lower()
+    
+    # Find the student by userId OR email
+    s = next(
+        (x for x in all_records('students') 
+         if str(x.get('userId')) == user_id 
+         or str(x.get('email') or '').lower() == user_email), 
+        None
+    )
+    
+    if not s:
+        print(f"DEBUG: No student found for user {user_id} / {user_email}")
+        return response_list('results', [])
+        
+    student_id = str(s.get('id'))
+    print(f"DEBUG: Found student {student_id} for user {user_id}")
+    
+    # Filter results
+    rows = [
+        r for r in all_records('results') 
+        if str(r.get('studentId')) == student_id 
+        and str(r.get('status', '')).upper() == 'PUBLISHED'
+    ]
+    
+    print(f"DEBUG: Returning {len(rows)} results for student {student_id}")
+    return response_list('results', rows)
 @portal_bp.post('/results/score-entry')
 @role_required('SUPER_ADMIN', 'LECTURER', 'HOD')
 def score_entry():
@@ -3260,3 +3329,21 @@ def lecturer_course_roster():
                 'existingExam': existing.get('examScore') if existing else 0,
             })
     return jsonify(success=True, students=student_list)
+
+
+@portal_bp.route('/results/<id>/status', methods=['PUT'])
+@jwt_required()
+def update_result_status(id):
+    data = request.get_json() or {}
+    new_status = str(data.get('status', '')).upper()
+    if new_status not in ['PENDING', 'PUBLISHED', 'REJECTED']:
+        return jsonify(success=False, message="Invalid status"), 400
+    
+    result = get_record('results', id)
+    if not result:
+        return jsonify(success=False, message="Result not found"), 404
+    
+    result['status'] = new_status
+    result['updatedAt'] = now()
+    put_record('results', result, record_key=id)
+    return jsonify(success=True, result=result)

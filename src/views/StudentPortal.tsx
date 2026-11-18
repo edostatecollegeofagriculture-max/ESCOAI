@@ -45,7 +45,6 @@ export const StudentPortal: React.FC<Props> = ({ onOpenPrintModal }) => {
 
         if (!stdRes.student) {
           console.warn('[StudentPortal] No student record for this user — skipping course/registration/results/invoice load.');
-          return;
         }
 
         const crsRes = await api.getCourses({ departmentId: stdRes.student?.departmentId, level: stdRes.student?.level, semester: settings?.currentSemester || 'First' });
@@ -602,4 +601,3 @@ return (
     </div>
   );
 };
-

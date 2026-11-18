@@ -3,8 +3,9 @@ import { api } from '../services/api';
 import { DocumentTemplatesTab } from './DocumentTemplatesTab';
 import { CourseManagementTab } from './CourseManagementTab';
 import { RegistrationApprovalTab } from './RegistrationApprovalTab';
+import { ResultModerationTab } from './ResultModerationTab';
 
-type Tab = 'slides' | 'news' | 'leadership' | 'faqs' | 'calendar' | 'schools' | 'departments' | 'programmes' | 'courses' | 'registrations' | 'settings' | 'documents';
+type Tab = 'slides' | 'news' | 'leadership' | 'faqs' | 'calendar' | 'schools' | 'departments' | 'programmes' | 'courses' | 'registrations' | 'settings' | 'moderation' | 'documents';
 
 export const ContentManagementModule: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('slides');
@@ -101,6 +102,7 @@ export const ContentManagementModule: React.FC = () => {
     { id: 'programmes', label: 'Programmes' },
     { id: 'courses', label: 'Course Management' },
     { id: 'registrations', label: 'Course Registrations' },
+    { id: 'moderation', label: 'Result Moderation' },
     { id: 'documents', label: 'Document Templates' },
     { id: 'settings', label: 'Settings' },
   ];
@@ -340,6 +342,7 @@ export const ContentManagementModule: React.FC = () => {
           {/* DOCUMENT TEMPLATES TAB */}
           {activeTab === 'courses' && <CourseManagementTab />}
           {activeTab === 'registrations' && <RegistrationApprovalTab />}
+          {activeTab === 'moderation' && <ResultModerationTab />}
           {activeTab === 'documents' && <DocumentTemplatesTab />}
 
           {activeTab === 'settings' && (
